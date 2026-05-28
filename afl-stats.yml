@@ -1,0 +1,105 @@
+name: Fetch AFL Player Stats
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season year"
+        required: false
+        default: "2026"
+      round:
+        description: "Round number (leave blank for all rounds)"
+        required: false
+        default: ""
+  schedule:
+    # Run every Thursday at 08:00 UTC (after Wednesday night games AEST)
+    - cron: "0 8 * * 4"
+
+jobs:
+  fetch-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run parser tests
+        run: python3 test_parser.py
+
+      - name: Resolve season and round
+        id: params
+        run: |
+          SEASON="${{ github.event.inputs.season || '2026' }}"
+          ROUND="${{ github.event.inputs.round }}"
+          echo "season=$SEASON" >> "$GITHUB_OUTPUT"
+          echo "round=$ROUND"   >> "$GITHUB_OUTPUT"
+
+      - name: Fetch season player list
+        run: |
+          python3 - <<'EOF'
+          import sys
+          sys.path.insert(0, ".")
+          import afltables as afl
+          season = int("${{ steps.params.outputs.season }}")
+          players = afl.get_season_player_list(season)
+          print(f"Season {season}: {len(players)} players found")
+          for p in players[:5]:
+              print(f"  {p['name']}")
+          if len(players) > 5:
+              print(f"  … and {len(players) - 5} more")
+          EOF
+
+      - name: Fetch full season stats
+        run: |
+          python3 - <<'EOF'
+          import sys, os
+          sys.path.insert(0, ".")
+          import afltables as afl
+          season = int("${{ steps.params.outputs.season }}")
+          out    = f"stats_{season}.csv"
+          df = afl.get_season_stats(season)
+          df.to_csv(out, index=False)
+          print(f"Saved {len(df)} rows to {out}")
+          print(df.head(10).to_string(index=False))
+          EOF
+
+      - name: Fetch Bontempelli game log (sample player)
+        run: |
+          python3 - <<'EOF'
+          import sys
+          sys.path.insert(0, ".")
+          import afltables as afl
+          season = int("${{ steps.params.outputs.season }}")
+          try:
+              url  = afl.find_player_url("Marcus Bontempelli")
+              data = afl.get_player_season_stats(url, season=season)
+              print(f"Bio: {data['meta']}")
+              print(f"\nSeason totals:\n{data['totals'].to_string(index=False)}")
+              if not data['games'].empty:
+                  print(f"\nGame log ({len(data['games'])} games):")
+                  print(data['games'].to_string(index=False))
+                  data['games'].to_csv(f"bontempelli_{season}_games.csv", index=False)
+          except Exception as e:
+              print(f"Warning: {e}")
+          EOF
+
+      - name: Upload stats CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: afl-stats-${{ steps.params.outputs.season }}
+          path: |
+            stats_${{ steps.params.outputs.season }}.csv
+            bontempelli_${{ steps.params.outputs.season }}_games.csv
+          if-no-files-found: warn
+          retention-days: 30
