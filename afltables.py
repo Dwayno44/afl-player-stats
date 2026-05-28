@@ -334,7 +334,7 @@ def get_team_season_stats(team: str, season: int,
     dfs  = pd.read_html(io.StringIO(html), attrs={"class": "sortable"})
     if not dfs:
         raise ValueError(f"No stats table on {url}")
-    df = _normalise_cols(dfs[0], SEASON_COL_MAP)
+    df = pd.concat(dfs, ignore_index=True)
     df.insert(0, "team",   team)
     df.insert(0, "season", season)
     return df
