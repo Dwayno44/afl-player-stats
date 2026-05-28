@@ -287,7 +287,7 @@ def get_season_stats(season: int,
     if not dfs:
         raise ValueError(f"No sortable tables found on {url}")
 
-    df = dfs[0]
+    df = pd.concat(dfs, ignore_index=True)
     df = _normalise_cols(df, SEASON_COL_MAP)
 
     if "games" in df.columns:
