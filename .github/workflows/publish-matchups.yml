@@ -1,0 +1,75 @@
+name: Publish matchup page
+
+# Rebuilds docs/index.html (the GitHub Pages site) on a weekly schedule.
+# By default it first refreshes the stats CSV by scraping afltables, so the
+# projections reflect the latest round; a manual run can skip the scrape and
+# just rebuild the page from the committed CSV.
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_scrape:
+        description: "Rebuild the page from the committed CSV without re-scraping stats"
+        type: boolean
+        default: false
+  schedule:
+    # Tuesday 20:00 UTC (~Wed 06:00 AEST) — after the weekend round completes
+    # and the upcoming fixture is set.
+    - cron: "0 20 * * 2"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-matchups
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run parser tests
+        run: python3 test_parser.py
+
+      - name: Refresh stats (all teams, 2024-2026)
+        if: ${{ github.event.inputs.skip_scrape != 'true' }}
+        run: |
+          python3 - <<'EOF'
+          import afltables as afl
+          df = afl.get_game_stats(range(2024, 2027), teams=None, delay=0.05)
+          df.to_csv("games_2024_2026.csv", index=False)
+          print(f"Refreshed {len(df)} rows, "
+                f"{df['player'].nunique()} players, {df['team'].nunique()} teams")
+          EOF
+
+      - name: Build matchup page
+        # Stats come from the (committed/refreshed) CSV; the fixture is pulled
+        # live from Squiggle. No --insecure needed on GitHub's runners.
+        run: python3 matchup_app.py --out docs/index.html
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add games_2024_2026.csv docs/index.html
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+          else
+            git commit -m "Auto-refresh matchup page ($(date -u +%Y-%m-%d))"
+            git push
+          fi

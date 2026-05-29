@@ -1,6 +1,8 @@
 __pycache__/
 *.py[cod]
 *.csv
+# the canonical stats reference IS tracked (CI rebuilds the page from it)
+!games_2024_2026.csv
 *.log
 # generated reports (the live page lives in docs/ and IS tracked)
 matchup.html
