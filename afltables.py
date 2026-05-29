@@ -275,33 +275,33 @@ def get_season_stats(season: int,
                      session: Optional[cloudscraper.CloudScraper] = None
                      ) -> pd.DataFrame:
     """
-    Fetches the season stats index page and returns a DataFrame with one row
-    per player — season totals for all players who appeared in `season`.
+    Fetches the combined all-teams stats page and returns a DataFrame with one
+    row per player — season totals for all players who appeared in `season`.
     """
     s    = session or _make_session()
-    url  = f"{STATS_BASE}{season}.html"
-    log.info(f"Fetching season {season} stats index: {url}")
+    url  = f"{STATS_BASE}{season}a.html"
+    log.info(f"Fetching season {season} combined stats: {url}")
     html = _get(s, url)
 
-    soup = BeautifulSoup(html, "lxml")
-    sortable_tables = soup.find_all("table", class_="sortable")
-    if not sortable_tables:
-        raise ValueError(f"No sortable tables found on {url}")
-    dfs = [pd.read_html(io.StringIO(str(t)))[0] for t in sortable_tables]
+    dfs = pd.read_html(io.StringIO(html))
+    if not dfs:
+        raise ValueError(f"No tables found on {url}")
 
-    df = pd.concat(dfs, ignore_index=True)
+    df = dfs[0]
     df = _normalise_cols(df, SEASON_COL_MAP)
 
     if "games" in df.columns:
         df = df[pd.to_numeric(df["games"], errors="coerce").notna()].copy()
 
-    names, urls = [], []
-    for table in sortable_tables:
+    soup = BeautifulSoup(html, "lxml")
+    table = soup.find("table", class_="sortable")
+    if table:
+        names, urls = [], []
         for row in table.find_all("tr")[1:]:
             cols = row.find_all("td")
             if len(cols) < 2:
                 continue
-            link = cols[1].find("a")
+            link = cols[0].find("a")
             if link:
                 href = link.get("href", "")
                 raw  = href.split("/")[-1].replace(".html", "")
@@ -311,10 +311,9 @@ def get_season_stats(season: int,
             else:
                 names.append("")
                 urls.append("")
-
-    if len(names) == len(df):
-        df.insert(0, "player_url", urls)
-        df.insert(0, "player",     names)
+        if len(names) == len(df):
+            df.insert(0, "player_url", urls)
+            df.insert(0, "player",     names)
 
     return df
 

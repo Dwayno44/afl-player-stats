@@ -62,30 +62,12 @@ jobs:
       - name: Fetch full season stats
         run: |
           python3 - <<'EOF'
-          import sys, os, io
+          import sys, os
           sys.path.insert(0, ".")
           import afltables as afl
-          import cloudscraper
-          from bs4 import BeautifulSoup
-
           season = int("${{ steps.params.outputs.season }}")
           out    = f"stats_{season}.csv"
-
-          # Diagnostics: check raw HTML and table count before calling get_season_stats
-          s = afl._make_session()
-          url = f"{afl.STATS_BASE}{season}.html"
-          html = afl._get(s, url)
-          print(f"HTML length: {len(html)}")
-          soup = BeautifulSoup(html, "lxml")
-          all_tables = soup.find_all("table")
-          sortable = soup.find_all("table", class_="sortable")
-          print(f"Total <table> tags: {len(all_tables)}")
-          print(f"Sortable tables: {len(sortable)}")
-          for i, t in enumerate(sortable[:3]):
-              rows = t.find_all("tr")
-              print(f"  Table {i}: rows={len(rows)}, first header={rows[0].get_text(strip=True)[:60]}")
-
-          df = afl.get_season_stats(season, session=s)
+          df = afl.get_season_stats(season)
           df.to_csv(out, index=False)
           print(f"Saved {len(df)} rows to {out}")
           print(df.head(10).to_string(index=False))
