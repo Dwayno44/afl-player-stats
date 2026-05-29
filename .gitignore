@@ -2,4 +2,9 @@ __pycache__/
 *.py[cod]
 *.csv
 *.log
+# generated reports (the live page lives in docs/ and IS tracked)
 matchup.html
+matchups.html
+game*.html
+# local tooling / preview helpers
+.claude/

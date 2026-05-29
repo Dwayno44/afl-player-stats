@@ -10,9 +10,11 @@ For tonight's fixture it shows, per player, for disposals and goals:
 Usage:
     python matchup.py                      # Geelong vs Carlton, top 10 each
     python matchup.py --home Carlton --away Geelong --n 12
-    python matchup.py --csv games_2024_2026_gee_car.csv
+    python matchup.py --csv games_2024_2026.csv
 """
 import argparse
+import math
+import numpy as np
 import pandas as pd
 
 CURRENT_SEASON = 2026
@@ -20,7 +22,9 @@ CURRENT_SEASON = 2026
 # Projection weights — emphasise head-to-head + recent form over season-long history.
 W_WITH_H2H    = {"form": 0.45, "h2h": 0.40, "season": 0.15}
 W_WITHOUT_H2H = {"form": 0.75, "season": 0.25}
-FORM_GAMES    = 5     # "recent form" window (most recent games this season)
+FORM_GAMES    = 5      # "recent form" window (most recent games this season)
+FLOOR_GAMES   = 15     # recent-game sample used to estimate confidence floors
+DEFAULT_CONF  = 0.75   # target confidence for floor numbers (75%)
 
 
 def load(csv: str) -> pd.DataFrame:
@@ -35,6 +39,62 @@ def load(csv: str) -> pd.DataFrame:
 def last_n_mean(g: pd.DataFrame, col: str, n: int = FORM_GAMES) -> float:
     s = g.sort_values("round").tail(n)[col]
     return s.mean() if len(s) else float("nan")
+
+
+# ── Confidence floors ───────────────────────────────────────────────────────────
+# A "floor" is the value a player has met-or-exceeded in `conf` of their recent
+# games — an empirical low percentile, so the margin scales with each player's
+# own volatility rather than a flat subtraction.
+
+def recent_for_team(df: pd.DataFrame, team: str, player: str,
+                    n: int = FLOOR_GAMES, min_n: int = 8) -> pd.DataFrame:
+    """Games used for the floor estimate: current season if it has enough
+    games (>= min_n), otherwise the most recent `n` games across seasons.
+    Anchoring on the current season keeps floors aligned with the player's
+    present role rather than blending in stale form."""
+    g = df[(df.team == team) & (df.player == player)].sort_values(["season", "round"])
+    cur = g[g.season == CURRENT_SEASON]
+    if len(cur) >= min_n:
+        return cur.tail(n)
+    return g.tail(max(n, min_n))
+
+
+def disposal_floor(series: pd.Series, conf: float = DEFAULT_CONF) -> float:
+    """Disposals met-or-exceeded in `conf` of recent games (rounded down)."""
+    s = series.dropna()
+    if len(s) < 3:
+        return float(s.min()) if len(s) else float("nan")
+    q = np.quantile(s.values, 1.0 - conf)   # lower tail: P(X >= q) ~= conf
+    return float(np.floor(q))
+
+
+def goal_floor(proj: float, conf: float = DEFAULT_CONF) -> int:
+    """Minimum goals we can back at `conf` confidence, modelling goals as
+    Poisson(lambda = projection). Returns the largest k with P(X >= k) >= conf.
+    Goals are sparse counts and the head-to-head sample is thin, so a model on
+    the matchup-aware projection is more reliable than an empirical percentile.
+    (Poisson(1.7) gives P(>=1) ~= 0.82, matching the usual ">1.7 -> back 1" rule.)"""
+    if proj is None or pd.isna(proj) or proj <= 0:
+        return 0
+    lam = float(proj)
+    k = 0
+    while k < 10:
+        cdf, term = 0.0, math.exp(-lam)        # P(X <= k)
+        for i in range(k + 1):
+            if i:
+                term *= lam / i
+            cdf += term
+        if 1.0 - cdf >= conf:                  # P(X >= k+1) >= conf
+            k += 1
+        else:
+            break
+    return k
+
+
+def anytime_goal_pct(series: pd.Series) -> float:
+    """Share of recent games with at least one goal (0..100)."""
+    s = series.dropna()
+    return float((s >= 1).mean() * 100) if len(s) else float("nan")
 
 
 def h2h_weighted(vg: pd.DataFrame, col: str) -> float:
@@ -54,7 +114,8 @@ def project(form, h2h, season, has_h2h):
     return w["form"] * form + w["season"] * season
 
 
-def team_view(df: pd.DataFrame, team: str, opponent: str, n: int) -> pd.DataFrame:
+def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
+              conf: float = DEFAULT_CONF) -> pd.DataFrame:
     cur = df[(df.team == team) & (df.season == CURRENT_SEASON)]
     vs  = df[(df.team == team) & (df.opponent == opponent)]   # all seasons
 
@@ -67,12 +128,23 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int) -> pd.DataFram
         d_vs = h2h_weighted(vg, "disposals")
         g_vs = h2h_weighted(vg, "goals")
         has = len(vg) >= 1
+
+        # Confidence floors from the player's recent games for this club.
+        recent = recent_for_team(df, team, player)
+        d_proj = project(d_l5, d_vs, d_avg, has)
+        g_proj = project(g_l5, g_vs, g_avg, has)
+        d_floor = disposal_floor(recent["disposals"], conf)
+        # A floor should never exceed the projection it sits beneath.
+        if pd.notna(d_floor) and pd.notna(d_proj):
+            d_floor = min(d_floor, float(np.floor(d_proj)))
         rows.append({
-            "player": player, "GP": gp,
+            "player": player, "GP": gp, "R_n": len(recent),
             "D_avg": d_avg, "D_L5": d_l5, "D_vs": d_vs, "D_n": len(vg),
-            "D_proj": project(d_l5, d_vs, d_avg, has),
+            "D_proj": d_proj, "D_floor": d_floor,
             "G_avg": g_avg, "G_L5": g_l5, "G_vs": g_vs,
-            "G_proj": project(g_l5, g_vs, g_avg, has),
+            "G_proj": g_proj,
+            "G_floor": goal_floor(g_proj, conf),
+            "G_any": anytime_goal_pct(recent["goals"]),
         })
 
     out = pd.DataFrame(rows)
@@ -221,7 +293,7 @@ def to_html(home, away, view_home, view_away, path, csv, n):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", default="games_2024_2026_gee_car.csv")
+    ap.add_argument("--csv", default="games_2024_2026.csv")
     ap.add_argument("--home", default="Geelong")
     ap.add_argument("--away", default="Carlton")
     ap.add_argument("--n", type=int, default=10)
