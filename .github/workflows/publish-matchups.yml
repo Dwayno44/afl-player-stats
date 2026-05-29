@@ -1,15 +1,20 @@
 name: Publish matchup page
 
 # Rebuilds docs/index.html (the GitHub Pages site) on a weekly schedule.
-# By default it first refreshes the stats CSV by scraping afltables, so the
-# projections reflect the latest round; a manual run can skip the scrape and
-# just rebuild the page from the committed CSV.
+# Default: an incremental update that scrapes only the current season and
+# appends any round not already in the committed CSV — prior seasons and
+# already-captured rounds are taken from the CSV and never re-scraped.
+# Manual runs can skip the scrape entirely, or force a full re-scrape.
 
 on:
   workflow_dispatch:
     inputs:
       skip_scrape:
-        description: "Rebuild the page from the committed CSV without re-scraping stats"
+        description: "Rebuild the page from the committed CSV without scraping"
+        type: boolean
+        default: false
+      full_rescrape:
+        description: "Re-scrape every season from scratch (backfill/repair)"
         type: boolean
         default: false
   schedule:
@@ -46,16 +51,16 @@ jobs:
       - name: Run parser tests
         run: python3 test_parser.py
 
-      - name: Refresh stats (all teams, 2024-2026)
+      - name: Refresh stats
+        # Default = incremental (current season's new round only). Prior seasons
+        # come from the committed CSV. full_rescrape forces a complete re-scrape.
         if: ${{ github.event.inputs.skip_scrape != 'true' }}
         run: |
-          python3 - <<'EOF'
-          import afltables as afl
-          df = afl.get_game_stats(range(2024, 2027), teams=None, delay=0.05)
-          df.to_csv("games_2024_2026.csv", index=False)
-          print(f"Refreshed {len(df)} rows, "
-                f"{df['player'].nunique()} players, {df['team'].nunique()} teams")
-          EOF
+          if [ "${{ github.event.inputs.full_rescrape }}" = "true" ]; then
+            python3 update_stats.py --full
+          else
+            python3 update_stats.py
+          fi
 
       - name: Build matchup page
         # Stats come from the (committed/refreshed) CSV; the fixture is pulled
