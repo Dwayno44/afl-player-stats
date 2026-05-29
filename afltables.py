@@ -283,9 +283,11 @@ def get_season_stats(season: int,
     log.info(f"Fetching season {season} stats index: {url}")
     html = _get(s, url)
 
-    dfs = pd.read_html(io.StringIO(html), attrs={"class": "sortable"})
-    if not dfs:
+    soup = BeautifulSoup(html, "lxml")
+    sortable_tables = soup.find_all("table", class_="sortable")
+    if not sortable_tables:
         raise ValueError(f"No sortable tables found on {url}")
+    dfs = [pd.read_html(io.StringIO(str(t)))[0] for t in sortable_tables]
 
     df = pd.concat(dfs, ignore_index=True)
     df = _normalise_cols(df, SEASON_COL_MAP)
@@ -293,9 +295,8 @@ def get_season_stats(season: int,
     if "games" in df.columns:
         df = df[pd.to_numeric(df["games"], errors="coerce").notna()].copy()
 
-    soup = BeautifulSoup(html, "lxml")
     names, urls = [], []
-    for table in soup.find_all("table", class_="sortable"):
+    for table in sortable_tables:
         for row in table.find_all("tr")[1:]:
             cols = row.find_all("td")
             if len(cols) < 2:
@@ -331,9 +332,11 @@ def get_team_season_stats(team: str, season: int,
     url  = f"{BASE}/teams/{slug}/{season}.html"
     log.info(f"Fetching team page: {url}")
     html = _get(s, url)
-    dfs  = pd.read_html(io.StringIO(html), attrs={"class": "sortable"})
-    if not dfs:
+    team_soup = BeautifulSoup(html, "lxml")
+    team_tables = team_soup.find_all("table", class_="sortable")
+    if not team_tables:
         raise ValueError(f"No stats table on {url}")
+    dfs = [pd.read_html(io.StringIO(str(t)))[0] for t in team_tables]
     df = pd.concat(dfs, ignore_index=True)
     df.insert(0, "team",   team)
     df.insert(0, "season", season)
