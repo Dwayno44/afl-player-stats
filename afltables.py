@@ -312,8 +312,10 @@ def get_season_stats(season: int,
                 names.append("")
                 urls.append("")
         if len(names) == len(df):
-            df.insert(0, "player_url", urls)
-            df.insert(0, "player",     names)
+            if "player_url" not in df.columns:
+                df.insert(0, "player_url", urls)
+            if "player" not in df.columns:
+                df.insert(0, "player",     names)
 
     return df
 
