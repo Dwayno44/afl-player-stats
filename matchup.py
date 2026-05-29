@@ -19,9 +19,13 @@ import pandas as pd
 
 CURRENT_SEASON = 2026
 
-# Projection weights — emphasise head-to-head + recent form over season-long history.
-W_WITH_H2H    = {"form": 0.45, "h2h": 0.40, "season": 0.15}
-W_WITHOUT_H2H = {"form": 0.75, "season": 0.25}
+# Projection weights — season average anchors the projection, with recent form a
+# small nudge and head-to-head a minor adjustment. These were chosen by walk-forward
+# backtest (see backtest.py): season-heavy weights minimise out-of-sample MAE, because
+# H2H samples (1-3 games) are too thin to trust and season average is the most stable,
+# most predictive single input. A pure-season baseline beat the old form/H2H-heavy blend.
+W_WITH_H2H    = {"form": 0.20, "h2h": 0.10, "season": 0.70}
+W_WITHOUT_H2H = {"form": 0.15, "season": 0.85}
 FORM_GAMES    = 5      # "recent form" window (most recent games this season)
 FLOOR_GAMES   = 15     # recent-game sample used to estimate confidence floors
 DEFAULT_CONF  = 0.75   # target confidence for floor numbers (75%)
@@ -265,9 +269,9 @@ def to_html(home, away, view_home, view_away, path, csv, n):
     )
     notes = (
         '<div class="notes"><h3>Method &amp; caveats</h3><ul>'
-        '<li>Projection blend &mdash; with H2H history: '
-        '<span class="chip">0.45&middot;L5 + 0.40&middot;H2H + 0.15&middot;season</span>; '
-        'without: <span class="chip">0.75&middot;L5 + 0.25&middot;season</span>.</li>'
+        '<li>Projection blend (backtest-tuned, season-anchored) &mdash; with H2H history: '
+        '<span class="chip">0.70&middot;season + 0.20&middot;L5 + 0.10&middot;H2H</span>; '
+        'without: <span class="chip">0.85&middot;season + 0.15&middot;L5</span>.</li>'
         '<li>Head-to-head is <b>recency-weighted</b> (2026 meetings count 3&times; a 2024 one).</li>'
         '<li>Blank goal cells in the source are treated as <b>0</b>, not missing.</li>'
         '<li>H2H samples are small (1&ndash;3 games) &mdash; trust the projection less when '
