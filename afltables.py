@@ -405,6 +405,41 @@ def get_season_player_links(season: int,
     return links
 
 
+def get_team_player_links(season: int,
+                          teams: Optional[set[str]] = None,
+                          session: Optional[cloudscraper.CloudScraper] = None
+                          ) -> dict[str, str]:
+    """
+    Returns {display_name: profile_url} for players in `season`, read from the
+    per-team season page ({season}.html) which groups players under one table
+    per club. If `teams` is given (case-insensitive club names), only those
+    clubs' rosters are returned; otherwise all clubs.
+    """
+    s    = session or _make_session()
+    url  = f"{STATS_BASE}{season}.html"
+    html = _get(s, url)
+    soup = BeautifulSoup(html, "lxml")
+
+    wanted = {t.strip().lower() for t in teams} if teams else None
+    links: dict[str, str] = {}
+    for table in soup.find_all("table", class_="sortable"):
+        th = table.find("th")
+        if not th:
+            continue
+        team_name = (th.find("a").get_text(strip=True)
+                     if th.find("a") else th.get_text(strip=True))
+        if wanted is not None and team_name.strip().lower() not in wanted:
+            continue
+        for row in table.find_all("tr")[1:]:
+            cells = row.find_all("td")
+            if len(cells) < 2:
+                continue
+            a = cells[1].find("a")
+            if a and a.get("href"):
+                links[a.get_text(strip=True)] = STATS_BASE + a["href"]
+    return links
+
+
 _SEASON_TABLE_RE = re.compile(r"^(?P<team>.+?)\s*-\s*(?P<year>\d{4})$")
 
 
@@ -450,29 +485,37 @@ def get_player_game_log(player_url: str,
 
 
 def get_game_stats(seasons,
+                   teams: Optional[set[str]] = None,
                    session: Optional[cloudscraper.CloudScraper] = None,
                    delay: float = 0.0,
                    progress_every: int = 50
                    ) -> pd.DataFrame:
     """
-    Returns per-game stats for every player across one or more seasons.
+    Returns per-game stats for players across one or more seasons.
 
     `seasons` may be a single int or an iterable of ints (e.g. range(2015, 2027)).
-    Each player page is fetched only once even when several seasons are requested,
-    since a player's full career lives on one page.
+    `teams` optionally restricts to specific clubs (case-insensitive names, e.g.
+    {"Geelong", "Carlton"}); rosters are read from each season's per-team page and
+    the resulting game rows are filtered to those clubs. Each player page is
+    fetched only once even when several seasons are requested.
     """
     if isinstance(seasons, int):
         season_set = {seasons}
     else:
         season_set = {int(y) for y in seasons}
 
+    team_set = {t.strip().lower() for t in teams} if teams else None
     s = session or _make_session()
 
-    # Union of every player who appeared in any requested season.
+    # Union of every relevant player who appeared in any requested season.
     players: dict[str, str] = {}
     for year in sorted(season_set):
         log.info(f"Collecting player list for {year} …")
-        for name, url in get_season_player_links(year, session=s).items():
+        if team_set is not None:
+            roster = get_team_player_links(year, teams=teams, session=s)
+        else:
+            roster = get_season_player_links(year, session=s)
+        for name, url in roster.items():
             players.setdefault(url, name)
 
     log.info(f"{len(players)} unique players across {len(season_set)} season(s)")
@@ -493,7 +536,14 @@ def get_game_stats(seasons,
 
     if not frames:
         return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
+    df = pd.concat(frames, ignore_index=True)
+
+    # Keep only games actually played for the requested clubs (a traded player's
+    # roster appearance shouldn't drag in games for their other club).
+    if team_set is not None and "team" in df.columns:
+        df = df[df["team"].astype(str).str.strip().str.lower().isin(team_set)]
+        df = df.reset_index(drop=True)
+    return df
 
 
 # ── Output helpers ────────────────────────────────────────────────────────────
@@ -551,6 +601,9 @@ def main() -> None:
                          help="Last season (inclusive); defaults to start")
     p_games.add_argument("--delay", type=float, default=0.0,
                          help="Seconds to pause between player requests")
+    p_games.add_argument("--teams", default=None,
+                         help="Comma-separated club names to restrict to "
+                              "(e.g. 'Geelong,Carlton')")
     p_games.add_argument("--out", help="Output CSV path")
 
     args = parser.parse_args()
@@ -605,8 +658,11 @@ def main() -> None:
         elif args.cmd == "games":
             end = args.end or args.start
             years = range(args.start, end + 1)
-            print(f"Fetching per-game stats for {args.start}–{end} …")
-            df = get_game_stats(years, session=session, delay=args.delay)
+            teams = ({t.strip() for t in args.teams.split(",") if t.strip()}
+                     if args.teams else None)
+            scope = f" [{', '.join(sorted(teams))}]" if teams else ""
+            print(f"Fetching per-game stats for {args.start}–{end}{scope} …")
+            df = get_game_stats(years, teams=teams, session=session, delay=args.delay)
             print(f"{len(df)} game rows for {df['player'].nunique()} players"
                   if not df.empty else "No game data found")
             _print_table(df)

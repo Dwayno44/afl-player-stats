@@ -11,6 +11,10 @@ on:
         description: "Last season year (inclusive; blank = same as start)"
         required: false
         default: ""
+      teams:
+        description: "Comma-separated clubs to restrict to (blank = all)"
+        required: false
+        default: ""
   schedule:
     - cron: "0 8 * * 4"
 
@@ -44,6 +48,7 @@ jobs:
           if [ -z "$END" ]; then END="$START"; fi
           echo "start=$START" >> "$GITHUB_OUTPUT"
           echo "end=$END"     >> "$GITHUB_OUTPUT"
+          echo "teams=${{ github.event.inputs.teams }}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch season totals (start season)
         run: |
@@ -67,8 +72,10 @@ jobs:
           import afltables as afl
           start = int("${{ steps.params.outputs.start }}")
           end   = int("${{ steps.params.outputs.end }}")
+          teams_raw = "${{ steps.params.outputs.teams }}".strip()
+          teams = {t.strip() for t in teams_raw.split(",") if t.strip()} or None
           out   = f"games_{start}_{end}.csv"
-          df = afl.get_game_stats(range(start, end + 1), delay=0.05)
+          df = afl.get_game_stats(range(start, end + 1), teams=teams, delay=0.05)
           df.to_csv(out, index=False)
           print(f"Saved {len(df)} game rows "
                 f"({df['player'].nunique() if not df.empty else 0} players) to {out}")
