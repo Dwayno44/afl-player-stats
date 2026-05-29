@@ -146,6 +146,50 @@ MOCK_PLAYER_HTML = """
 </body></html>
 """
 
+# Mirrors the real per-game tables on a player profile page: a two-row header
+# where the first row spans all columns with "Team - Year", which pandas parses
+# into a MultiIndex (('Western Bulldogs - 2026', 'Opponent'), ...).
+MOCK_GAMELOG_HTML = """
+<html><body>
+<table class="sortable">
+  <thead>
+    <tr><th colspan="10">Western Bulldogs - 2026</th></tr>
+    <tr>
+      <th>Gm</th><th>Opponent</th><th>Rd</th><th>R</th><th>#</th>
+      <th>KI</th><th>MK</th><th>HB</th><th>DI</th><th>GL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>GWS Giants</td><td>1</td><td>W</td><td>4</td>
+        <td>19</td><td>6</td><td>10</td><td>29</td><td>1</td></tr>
+    <tr><td>2</td><td>Carlton</td><td>2</td><td>L</td><td>4</td>
+        <td>17</td><td>5</td><td>9</td><td>26</td><td>0</td></tr>
+    <tr><td>3</td><td>Brisbane Lions</td><td>3</td><td>W</td><td>4</td>
+        <td>20</td><td>7</td><td>11</td><td>31</td><td>2</td></tr>
+  </tbody>
+  <tfoot>
+    <tr><td>3</td><td>Totals</td><td>3</td><td></td><td>4</td>
+        <td>56</td><td>18</td><td>30</td><td>86</td><td>3</td></tr>
+  </tfoot>
+</table>
+<table class="sortable">
+  <thead>
+    <tr><th colspan="10">Western Bulldogs - 2025</th></tr>
+    <tr>
+      <th>Gm</th><th>Opponent</th><th>Rd</th><th>R</th><th>#</th>
+      <th>KI</th><th>MK</th><th>HB</th><th>DI</th><th>GL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>Melbourne</td><td>1</td><td>W</td><td>4</td>
+        <td>15</td><td>4</td><td>12</td><td>27</td><td>1</td></tr>
+    <tr><td>2</td><td>Geelong</td><td>2</td><td>L</td><td>4</td>
+        <td>18</td><td>6</td><td>10</td><td>28</td><td>0</td></tr>
+  </tbody>
+</table>
+</body></html>
+"""
+
 MOCK_INDEX_HTML = """
 <html><body>
 <h2>Players B</h2>
@@ -295,6 +339,40 @@ class TestPlayerProfile(unittest.TestCase):
         avg_row = self._parse_profile(MOCK_PLAYER_HTML, season=2026)["averages"].iloc[0]
         self.assertAlmostEqual(float(avg_row["kicks"]), 18.2)
         self.assertAlmostEqual(float(avg_row["disposals"]), 27.8)
+
+
+class TestPlayerGameLog(unittest.TestCase):
+    """Tests for get_player_game_log — per-game rows with opponent."""
+
+    def test_single_season_rows(self):
+        df = afl.get_player_game_log("http://x", seasons={2026}, html=MOCK_GAMELOG_HTML)
+        self.assertEqual(len(df), 3)           # 3 games, Totals row dropped
+
+    def test_season_and_team_tagged(self):
+        df = afl.get_player_game_log("http://x", seasons={2026}, html=MOCK_GAMELOG_HTML)
+        self.assertTrue((df["season"] == 2026).all())
+        self.assertTrue((df["team"] == "Western Bulldogs").all())
+
+    def test_opponent_and_stats_present(self):
+        df = afl.get_player_game_log("http://x", seasons={2026}, html=MOCK_GAMELOG_HTML)
+        for col in ("opponent", "round", "result", "kicks", "handballs",
+                    "disposals", "goals", "marks"):
+            self.assertIn(col, df.columns)
+        self.assertEqual(str(df.iloc[0]["opponent"]), "GWS Giants")
+        self.assertEqual(str(df.iloc[0]["kicks"]), "19")
+
+    def test_totals_row_dropped(self):
+        df = afl.get_player_game_log("http://x", seasons={2026}, html=MOCK_GAMELOG_HTML)
+        self.assertNotIn("Totals", df["opponent"].astype(str).tolist())
+
+    def test_multi_season_range(self):
+        df = afl.get_player_game_log("http://x", seasons={2025, 2026}, html=MOCK_GAMELOG_HTML)
+        self.assertEqual(len(df), 5)           # 3 (2026) + 2 (2025)
+        self.assertEqual(sorted(df["season"].unique()), [2025, 2026])
+
+    def test_season_filter_excludes_other_years(self):
+        df = afl.get_player_game_log("http://x", seasons={2099}, html=MOCK_GAMELOG_HTML)
+        self.assertTrue(df.empty)
 
 
 class TestPlayerIndex(unittest.TestCase):

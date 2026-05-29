@@ -110,6 +110,39 @@ GAME_COL_MAP = {
     "AF":       "afl_fantasy",
 }
 
+# Per-game tables on player profile pages (header abbreviations differ from
+# the season index, e.g. IF not I5, FF not FR).
+PLAYER_GAME_COL_MAP = {
+    "Gm":       "game_number",
+    "Opponent": "opponent",
+    "Rd":       "round",
+    "R":        "result",
+    "#":        "jumper",
+    "KI":       "kicks",
+    "MK":       "marks",
+    "HB":       "handballs",
+    "DI":       "disposals",
+    "GL":       "goals",
+    "BH":       "behinds",
+    "HO":       "hit_outs",
+    "TK":       "tackles",
+    "RB":       "rebound_50s",
+    "IF":       "inside_50s",
+    "CL":       "clearances",
+    "CG":       "clangers",
+    "FF":       "frees_for",
+    "FA":       "frees_against",
+    "BR":       "brownlow_votes",
+    "CP":       "contested_possessions",
+    "UP":       "uncontested_possessions",
+    "CM":       "contested_marks",
+    "MI":       "marks_inside_50",
+    "1%":       "one_percenters",
+    "BO":       "bounces",
+    "GA":       "goal_assist",
+    "%P":       "pct_played",
+}
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger("afltables")
 
@@ -344,6 +377,125 @@ def get_team_season_stats(team: str, season: int,
     return df
 
 
+# ── Per-game stats (player game logs) ──────────────────────────────────────────
+
+def get_season_player_links(season: int,
+                            session: Optional[cloudscraper.CloudScraper] = None
+                            ) -> dict[str, str]:
+    """
+    Returns {display_name: profile_url} for every player in `season`, read from
+    the combined all-teams page ({season}a.html) in a single request.
+    """
+    s    = session or _make_session()
+    url  = f"{STATS_BASE}{season}a.html"
+    html = _get(s, url)
+    soup = BeautifulSoup(html, "lxml")
+    table = soup.find("table", class_="sortable")
+    if not table:
+        raise ValueError(f"No sortable table on {url}")
+
+    links: dict[str, str] = {}
+    for row in table.find_all("tr")[1:]:
+        cells = row.find_all("td")
+        if not cells:
+            continue
+        a = cells[0].find("a")
+        if a and a.get("href"):
+            links[a.get_text(strip=True)] = STATS_BASE + a["href"]
+    return links
+
+
+_SEASON_TABLE_RE = re.compile(r"^(?P<team>.+?)\s*-\s*(?P<year>\d{4})$")
+
+
+def get_player_game_log(player_url: str,
+                        seasons: Optional[set[int]] = None,
+                        session: Optional[cloudscraper.CloudScraper] = None,
+                        html: Optional[str] = None
+                        ) -> pd.DataFrame:
+    """
+    Returns one row per game for a player, with opponent, round, result and all
+    per-game stats. If `seasons` is given, only those years are kept; otherwise
+    the player's entire career is returned.
+
+    `html` may be passed to reuse an already-fetched page.
+    """
+    if html is None:
+        s    = session or _make_session()
+        html = _get(s, player_url)
+
+    frames: list[pd.DataFrame] = []
+    for tbl in pd.read_html(io.StringIO(html)):
+        if not isinstance(tbl.columns, pd.MultiIndex):
+            continue
+        m = _SEASON_TABLE_RE.match(str(tbl.columns[0][0]).strip())
+        if not m:
+            continue
+        year = int(m.group("year"))
+        if seasons is not None and year not in seasons:
+            continue
+
+        g = tbl.copy()
+        g.columns = [c[1] for c in g.columns]      # drop the "Team - Year" level
+        g = _normalise_cols(g, PLAYER_GAME_COL_MAP)
+        if "opponent" in g.columns:                # drop the trailing Totals row
+            g = g[~g["opponent"].astype(str).str.strip().eq("Totals")]
+        g.insert(0, "team",   m.group("team").strip())
+        g.insert(0, "season", year)
+        frames.append(g)
+
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def get_game_stats(seasons,
+                   session: Optional[cloudscraper.CloudScraper] = None,
+                   delay: float = 0.0,
+                   progress_every: int = 50
+                   ) -> pd.DataFrame:
+    """
+    Returns per-game stats for every player across one or more seasons.
+
+    `seasons` may be a single int or an iterable of ints (e.g. range(2015, 2027)).
+    Each player page is fetched only once even when several seasons are requested,
+    since a player's full career lives on one page.
+    """
+    if isinstance(seasons, int):
+        season_set = {seasons}
+    else:
+        season_set = {int(y) for y in seasons}
+
+    s = session or _make_session()
+
+    # Union of every player who appeared in any requested season.
+    players: dict[str, str] = {}
+    for year in sorted(season_set):
+        log.info(f"Collecting player list for {year} …")
+        for name, url in get_season_player_links(year, session=s).items():
+            players.setdefault(url, name)
+
+    log.info(f"{len(players)} unique players across {len(season_set)} season(s)")
+
+    frames: list[pd.DataFrame] = []
+    for i, (url, name) in enumerate(players.items(), 1):
+        try:
+            log_df = get_player_game_log(url, seasons=season_set, session=s)
+            if not log_df.empty:
+                log_df.insert(0, "player", name)
+                frames.append(log_df)
+        except Exception as e:
+            log.warning(f"Skipping {name} ({url}): {e}")
+        if progress_every and i % progress_every == 0:
+            log.info(f"  {i}/{len(players)} players processed")
+        if delay:
+            time.sleep(delay)
+
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
 # ── Output helpers ────────────────────────────────────────────────────────────
 
 def df_to_csv_str(df: pd.DataFrame) -> str:
@@ -391,6 +543,15 @@ def main() -> None:
     p_season.add_argument("year", type=int)
     p_season.add_argument("--out",  help="Output CSV path")
     p_season.add_argument("--json", action="store_true")
+
+    p_games = sub.add_parser("games",
+                             help="Per-game stats (all players, one row per game)")
+    p_games.add_argument("start", type=int, help="First season (e.g. 2026)")
+    p_games.add_argument("--end", type=int, default=None,
+                         help="Last season (inclusive); defaults to start")
+    p_games.add_argument("--delay", type=float, default=0.0,
+                         help="Seconds to pause between player requests")
+    p_games.add_argument("--out", help="Output CSV path")
 
     args = parser.parse_args()
     session = _make_session()
@@ -440,6 +601,18 @@ def main() -> None:
                 print(f"\nSaved to {args.out}")
             if args.json:
                 print(json.dumps(df_to_records(df), indent=2)[:2000])
+
+        elif args.cmd == "games":
+            end = args.end or args.start
+            years = range(args.start, end + 1)
+            print(f"Fetching per-game stats for {args.start}–{end} …")
+            df = get_game_stats(years, session=session, delay=args.delay)
+            print(f"{len(df)} game rows for {df['player'].nunique()} players"
+                  if not df.empty else "No game data found")
+            _print_table(df)
+            if args.out:
+                df.to_csv(args.out, index=False)
+                print(f"\nSaved to {args.out}")
 
     except LookupError as e:
         print(f"Not found: {e}", file=sys.stderr)
