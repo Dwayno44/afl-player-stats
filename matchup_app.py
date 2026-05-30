@@ -148,9 +148,8 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .badge.yes{background:rgba(63,185,80,.16);color:var(--good);border:1px solid rgba(63,185,80,.4)}
 .pct.hi{color:var(--good)}.pct.mid{color:var(--mid)}.pct.lo{color:var(--mut)}
 .pct.elite{color:var(--good);font-weight:800}
-/* very likely to goal (1+ rate > 85%) — flag the whole goal cell */
+/* goal floor backs 1+ goals at the confidence level — flag the whole goal cell */
 .stat.goal.hot{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
-.badge.hot{background:rgba(63,185,80,.18);color:var(--good);border:1px solid rgba(63,185,80,.5)}
 .na{color:#56606b}
 .notes{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 17px;
        color:var(--mut);font-size:12px;margin-top:16px}
@@ -203,32 +202,31 @@ function dispStat(r, o3, dmax){
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det">' + det + '</div></div>';
 }
-function goalStat(r, o3){
-  const any = r.G_any;
-  const hot = any !== null && any > HOT;
-  const w = any === null ? 0 : Math.max(2, any);
+function goalStat(r, o3, gmax){
+  const floor = r.G_floor;              // hero: conf% goal floor (k+)
+  const any = r.G_any;                  // supporting: empirical 1+ rate
+  const backed = floor !== null && floor >= 1;
+  const w = (r.G_proj && gmax) ? Math.max(4, Math.min(100, r.G_proj / gmax * 100)) : 0;
   const pc = any === null ? 'lo' : pctCls(any);
-  const floorBadge = r.G_floor >= 1
-      ? ' <span class="badge yes">back ' + r.G_floor + '+</span>' : '';
-  const hotBadge = hot ? ' <span class="badge hot">very likely</span>' : '';
-  const big = any === null ? DASH : Math.round(any) + '%';
+  const anyTxt = any === null ? DASH : Math.round(any) + '%';
   const det = 'proj ' + f1(r.G_proj) + DOT + 'avg ' + f1(r.G_avg) + DOT +
               'L5 ' + f1(r.G_L5) + DOT + 'v' + o3 + ' ' + f1(r.G_vs) + ' (' + r.D_n + ')';
-  return '<div class="stat goal' + (hot ? ' hot' : '') + '"><div class="lbl"><span>Goals</span>'+
-    '<span>1+ rate</span></div>'+
-    '<div class="big pct ' + pc + '">' + big + floorBadge + hotBadge + '</div>'+
+  return '<div class="stat goal' + (backed ? ' hot' : '') + '"><div class="lbl"><span>Goals</span>'+
+    '<span>floor \\u00b7 ' + CONF + '%</span></div>'+
+    '<div class="big">' + (floor === null ? DASH : floor) + '<span class="u">+ goals</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
-    '<div class="det">' + det + '</div></div>';
+    '<div class="det"><b class="pct ' + pc + '">' + anyTxt + '</b> 1+ rate' + DOT + det + '</div></div>';
 }
 function teamCard(side, team, opp, view){
   const o3 = opp.slice(0, 3);
   const dmax = Math.max(...view.map(r => r.D_proj || 0), 1);
+  const gmax = Math.max(...view.map(r => r.G_proj || 0), 1);
   let rows = '';
   view.forEach((r, i) => {
     rows += '<div class="prow"><div class="phead">'+
       '<div class="pname"><span class="rk">' + (i + 1) + '</span>' + r.player + '</div>'+
       '<div class="pmeta">' + r.GP + ' GP \\u00b7 ' + r.R_n + 'g</div></div>'+
-      '<div class="stats">' + dispStat(r, o3, dmax) + goalStat(r, o3) + '</div></div>';
+      '<div class="stats">' + dispStat(r, o3, dmax) + goalStat(r, o3, gmax) + '</div></div>';
   });
   return '<div class="card ' + side + '"><h2>' + team +
     ' <small>vs ' + opp + '</small></h2>' + rows + '</div>';
@@ -260,9 +258,9 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
     legend = (
         '<div class="legend">'
         f'<span><b>min</b> disposal floor &mdash; projection minus a {cpc}% margin of safety</span>'
-        '<span><b>1+ rate</b> share of recent games with a goal</span>'
-        '<span><b class="pct elite">&gt;85%</b> very likely to goal</span>'
-        '<span><b class="pct hi">back k+</b> matchup backs &ge;k goals</span>'
+        f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {cpc}% confidence</span>'
+        '<span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span>'
+        '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         '<span><b>proj</b> blended projection</span>'
         '</div>'
     )
@@ -277,10 +275,10 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
         f'(z<sub>{cpc}%</sub> &times; the player\'s recent std-dev), so erratic players are '
         'discounted more. Under a normal approximation they clear it in '
         f'~{cpc}% of games.</li>'
-        f'<li><b>Goal floor</b> &mdash; largest k with P(&ge;k)&ge;{cpc}% under '
-        'Poisson(&lambda;=projection); shown as the green <span class="chip">back k+</span> '
-        'badge. <b>1+ rate</b> is the separate empirical scoring reliability &mdash; above '
-        '<b>85%</b> it is flagged <span class="chip">very likely</span>.</li>'
+        f'<li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;{cpc}% under '
+        'Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell '
+        f'is highlighted when the floor backs 1+ goal at {cpc}%. <b>1+ rate</b> is a supporting '
+        'figure &mdash; the separate empirical share of recent games with a goal.</li>'
         '<li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; recent form '
         'is split across three windows (L3/L5/L10). With H2H: '
         '<span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>, '
@@ -293,15 +291,15 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
     )
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>AFL Matchup Floors {M.CURRENT_SEASON}</title>
+<title>Punters Mate {M.CURRENT_SEASON}</title>
 <link rel="apple-touch-icon" sizes="180x180" href="{icon}">
 <link rel="icon" href="{icon}">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="AFL Floors">
+<meta name="apple-mobile-web-app-title" content="Punters Mate">
 <style>{_CSS}</style></head>
 <body><div class="wrap">
-<header class="top"><h1>AFL Matchup Floors</h1>
+<header class="top"><h1>Punters Mate</h1>
 <select id="game" aria-label="Select match"></select>
 <p class="meta" id="meta"></p></header>
 <p class="sub">Confidence floors for disposals &amp; goals &middot; {cpc}% confidence &middot; \
