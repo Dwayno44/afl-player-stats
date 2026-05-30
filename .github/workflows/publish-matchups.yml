@@ -71,7 +71,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add games_2024_2026.csv docs/index.html
+          git add games_2024_2026.csv docs/index.html docs/apple-touch-icon.png
           if git diff --cached --quiet; then
             echo "No changes to publish."
           else

@@ -12,12 +12,39 @@ Usage:
 """
 import argparse
 import json
+import os
 from datetime import date
 
 import pandas as pd
 
 import matchup as M
 import fixtures as F
+
+APPLE_ICON = "apple-touch-icon.png"
+
+
+def write_apple_icon(out_html_path: str, size: int = 180) -> str:
+    """Draw a simple AFL-football home-screen icon next to the output HTML.
+
+    iOS ignores data-URI apple-touch-icons, so we emit a real PNG and reference
+    it relatively. Full-bleed dark background since iOS masks the icon to a
+    rounded squircle. Returns the relative filename for the <link>."""
+    from PIL import Image, ImageDraw
+
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(out_html_path)), APPLE_ICON)
+    img = Image.new("RGB", (size, size), (15, 20, 25))      # --bg
+    d = ImageDraw.Draw(img)
+    cx, cy = size / 2, size / 2
+    rw, rh = size * 0.27, size * 0.42
+    d.ellipse([cx - rw, cy - rh, cx + rw, cy + rh], fill=(245, 158, 11))   # footy, --goal amber
+    seam = max(3, int(size * 0.022))
+    d.line([(cx, cy - rh * 0.72), (cx, cy + rh * 0.72)], fill=(15, 20, 25), width=seam)
+    lace = max(2, int(size * 0.012))
+    for t in range(-3, 4):
+        y = cy + t * rh * 0.155
+        d.line([(cx - size * 0.05, y), (cx + size * 0.05, y)], fill=(15, 20, 25), width=lace)
+    img.save(icon_path, "PNG")
+    return APPLE_ICON
 
 
 def _view_to_records(view: pd.DataFrame) -> list[dict]:
@@ -214,7 +241,11 @@ function render(i){
     teamCard('away', g.away, g.home, g.away_view);
 }
 sel.addEventListener('change', e => render(+e.target.value));
-if (DATA.games.length) render(0);
+// Default to the next game that hasn't started yet (fall back to the first).
+const now = new Date();
+let start = DATA.games.findIndex(g => g.date && new Date(g.date.replace(' ', 'T')) >= now);
+if (start < 0) start = 0;
+if (DATA.games.length) { sel.value = start; render(start); }
 """
 
 
@@ -224,6 +255,7 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
             "conf": conf, "games": games}
     payload = json.dumps(data, separators=(",", ":"))
     js = _JS.replace("__DATA__", payload)
+    icon = write_apple_icon(path)
 
     legend = (
         '<div class="legend">'
@@ -261,7 +293,13 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
     )
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>AFL Matchup Floors {M.CURRENT_SEASON}</title><style>{_CSS}</style></head>
+<title>AFL Matchup Floors {M.CURRENT_SEASON}</title>
+<link rel="apple-touch-icon" sizes="180x180" href="{icon}">
+<link rel="icon" href="{icon}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AFL Floors">
+<style>{_CSS}</style></head>
 <body><div class="wrap">
 <header class="top"><h1>AFL Matchup Floors</h1>
 <select id="game" aria-label="Select match"></select>

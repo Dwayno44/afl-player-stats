@@ -8,5 +8,7 @@ __pycache__/
 matchup.html
 matchups.html
 game*.html
+# home-screen icon is a build artifact at the repo root, but tracked under docs/
+/apple-touch-icon.png
 # local tooling / preview helpers
 .claude/
