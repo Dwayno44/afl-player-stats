@@ -168,6 +168,7 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 _JS = """
 const DATA = __DATA__;
 const CONF = Math.round(DATA.conf * 100);
+const GCONF = Math.round(DATA.goal_conf * 100);
 const sel = document.getElementById('game');
 const out = document.getElementById('out');
 const meta = document.getElementById('meta');
@@ -212,7 +213,7 @@ function goalStat(r, o3, gmax){
   const det = 'proj ' + f1(r.G_proj) + DOT + 'avg ' + f1(r.G_avg) + DOT +
               'L5 ' + f1(r.G_L5) + DOT + 'v' + o3 + ' ' + f1(r.G_vs) + ' (' + r.D_n + ')';
   return '<div class="stat goal' + (backed ? ' hot' : '') + '"><div class="lbl"><span>Goals</span>'+
-    '<span>' + CONF + '% conf</span></div>'+
+    '<span>' + GCONF + '% conf</span></div>'+
     '<div class="big">' + (floor === null ? DASH : floor) + '<span class="u">+ goals</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det"><b class="pct ' + pc + '">' + anyTxt + '</b> 1+ rate' + DOT + det + '</div></div>';
@@ -247,10 +248,11 @@ if (DATA.games.length) { sel.value = start; render(start); }
 """
 
 
-def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
+def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CONF):
     cpc = round(conf * 100)
+    gpc = round(goal_conf * 100)
     data = {"generated": str(date.today()), "season": M.CURRENT_SEASON,
-            "conf": conf, "games": games}
+            "conf": conf, "goal_conf": goal_conf, "games": games}
     payload = json.dumps(data, separators=(",", ":"))
     js = _JS.replace("__DATA__", payload)
     icon = write_apple_icon(path)
@@ -258,7 +260,7 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
     legend = (
         '<div class="legend">'
         f'<span><b>min</b> disposal floor &mdash; projection minus a {cpc}% margin of safety</span>'
-        f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {cpc}% confidence</span>'
+        f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {gpc}% confidence</span>'
         '<span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span>'
         '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         '<span><b>proj</b> blended projection</span>'
@@ -275,9 +277,9 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
         f'(z<sub>{cpc}%</sub> &times; the player\'s recent std-dev), so erratic players are '
         'discounted more. Under a normal approximation they clear it in '
         f'~{cpc}% of games.</li>'
-        f'<li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;{cpc}% under '
+        f'<li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;{gpc}% under '
         'Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell '
-        f'is highlighted when the floor backs 1+ goal at {cpc}%. <b>1+ rate</b> is a supporting '
+        f'is highlighted when the floor backs 1+ goal at {gpc}%. <b>1+ rate</b> is a supporting '
         'figure &mdash; the separate empirical share of recent games with a goal.</li>'
         '<li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; recent form '
         'is split across three windows (L3/L5/L10). With H2H: '
@@ -302,7 +304,7 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
 <header class="top"><h1>Punters Mate</h1>
 <select id="game" aria-label="Select match"></select>
 <p class="meta" id="meta"></p></header>
-<p class="sub">Confidence floors for disposals &amp; goals &middot; {cpc}% confidence &middot; \
+<p class="sub">Confidence floors &middot; disposals {cpc}% &middot; goals {gpc}% &middot; \
 {M.CURRENT_SEASON} &middot; generated {date.today()} &middot; source: {csv}</p>
 {legend}
 <div class="games" id="out"></div>

@@ -32,7 +32,10 @@ W_WITH_H2H    = {"L3": 0.15, "L5": 0.05, "L10": 0.05, "h2h": 0.10, "season": 0.6
 W_WITHOUT_H2H = {"L3": 0.15, "L5": 0.05, "L10": 0.25, "season": 0.55}
 FORM_GAMES    = 5      # window shown as "L5" in the views (the projection uses all of FORM_WINDOWS)
 FLOOR_GAMES   = 15     # recent-game sample used to estimate confidence floors
-DEFAULT_CONF  = 0.75   # target confidence for floor numbers (75%)
+DEFAULT_CONF  = 0.75   # target confidence for the disposal floor (75%)
+GOAL_CONF     = 0.65   # goals are sparse; a 75% Poisson floor is too strict, so
+                       # the goal floor uses a lower confidence (a proj of ~1.05
+                       # goals clears 1+ here, vs ~1.39 at 75%)
 
 
 def load(csv: str) -> pd.DataFrame:
@@ -142,7 +145,7 @@ def project(forms: dict, h2h, season, has_h2h):
 
 
 def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
-              conf: float = DEFAULT_CONF) -> pd.DataFrame:
+              conf: float = DEFAULT_CONF, goal_conf: float = GOAL_CONF) -> pd.DataFrame:
     cur = df[(df.team == team) & (df.season == CURRENT_SEASON)]
     vs  = df[(df.team == team) & (df.opponent == opponent)]   # all seasons
 
@@ -170,7 +173,7 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
             "D_proj": d_proj, "D_floor": d_floor,
             "G_avg": g_avg, "G_L5": g_l5, "G_vs": g_vs,
             "G_proj": g_proj,
-            "G_floor": goal_floor(g_proj, conf),
+            "G_floor": goal_floor(g_proj, goal_conf),
             "G_any": anytime_goal_pct(recent["goals"]),
         })
 
