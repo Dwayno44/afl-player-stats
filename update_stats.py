@@ -19,7 +19,8 @@ import pandas as pd
 import afltables as afl
 import matchup as M
 
-CSV_DEFAULT = "games_2024_2026.csv"
+CSV_DEFAULT = "games_2022_2026.csv"
+HISTORY_START = 2022   # earliest season a full re-scrape rebuilds from
 KEY = ["player", "season", "round", "team"]   # uniquely identifies a game row
 
 
@@ -67,7 +68,7 @@ def main():
                        headers={"User-Agent": "Mozilla/5.0"}))
 
     if args.full:
-        seasons = range(2024, args.season + 1)
+        seasons = range(HISTORY_START, args.season + 1)
         print(f"Full re-scrape of {seasons.start}-{seasons.stop - 1} …")
         df = afl.get_game_stats(seasons, teams=None, delay=args.delay)
         df.to_csv(args.csv, index=False)

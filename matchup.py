@@ -10,7 +10,7 @@ For tonight's fixture it shows, per player, for disposals and goals:
 Usage:
     python matchup.py                      # Geelong vs Carlton, top 10 each
     python matchup.py --home Carlton --away Geelong --n 12
-    python matchup.py --csv games_2024_2026.csv
+    python matchup.py --csv games_2022_2026.csv
 """
 import argparse
 import math
@@ -32,7 +32,7 @@ W_WITH_H2H    = {"L3": 0.15, "L5": 0.05, "L10": 0.05, "h2h": 0.10, "season": 0.6
 W_WITHOUT_H2H = {"L3": 0.15, "L5": 0.05, "L10": 0.25, "season": 0.55}
 FORM_GAMES    = 5      # window shown as "L5" in the views (the projection uses all of FORM_WINDOWS)
 FLOOR_GAMES   = 15     # recent-game sample used to estimate confidence floors
-DEFAULT_CONF  = 0.75   # target confidence for the disposal floor (75%)
+DEFAULT_CONF  = 0.85   # target confidence for the disposal floor (85%)
 GOAL_CONF     = 0.65   # goals are sparse; a 75% Poisson floor is too strict, so
                        # the goal floor uses a lower confidence (a proj of ~1.05
                        # goals clears 1+ here, vs ~1.39 at 75%)
@@ -323,7 +323,7 @@ def to_html(home, away, view_home, view_away, path, csv, n):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", default="games_2024_2026.csv")
+    ap.add_argument("--csv", default="games_2022_2026.csv")
     ap.add_argument("--home", default="Geelong")
     ap.add_argument("--away", default="Carlton")
     ap.add_argument("--n", type=int, default=10)

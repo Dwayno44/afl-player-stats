@@ -249,7 +249,7 @@ def report(df: pd.DataFrame, stat: str, form_windows, step: float, last_only: bo
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", default="games_2024_2026.csv")
+    ap.add_argument("--csv", default="games_2022_2026.csv")
     ap.add_argument("--stat", choices=["disposals", "goals"], default="disposals")
     ap.add_argument("--windows", default=",".join(map(str, FORM_WINDOWS)),
                     help="comma-separated form-average windows, e.g. 3,5,10")

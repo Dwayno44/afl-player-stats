@@ -318,7 +318,7 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_
 def main():
     import os
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", default="games_2024_2026.csv")
+    ap.add_argument("--csv", default="games_2022_2026.csv")
     ap.add_argument("--year", type=int, default=M.CURRENT_SEASON)
     ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--conf", type=float, default=M.DEFAULT_CONF,
