@@ -120,6 +120,10 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
        letter-spacing:.02em}
 .badge.yes{background:rgba(63,185,80,.16);color:var(--good);border:1px solid rgba(63,185,80,.4)}
 .pct.hi{color:var(--good)}.pct.mid{color:var(--mid)}.pct.lo{color:var(--mut)}
+.pct.elite{color:var(--good);font-weight:800}
+/* very likely to goal (1+ rate > 85%) — flag the whole goal cell */
+.stat.goal.hot{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
+.badge.hot{background:rgba(63,185,80,.18);color:var(--good);border:1px solid rgba(63,185,80,.5)}
 .na{color:#56606b}
 .notes{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 17px;
        color:var(--mut);font-size:12px;margin-top:16px}
@@ -157,9 +161,10 @@ DATA.games.forEach((g, i) => {
 });
 
 const DASH = '\\u2013', DOT = ' \\u00b7 ';
+const HOT = 85;   // 1+ goal rate above this is flagged as "very likely"
 function f1(v){ return v === null ? DASH : v.toFixed(1); }
 function f0(v){ return v === null ? DASH : Math.round(v).toString(); }
-function pctCls(p){ return p >= CONF ? 'hi' : (p >= 50 ? 'mid' : 'lo'); }
+function pctCls(p){ return p > HOT ? 'elite' : (p >= CONF ? 'hi' : (p >= 50 ? 'mid' : 'lo')); }
 
 function dispStat(r, o3, dmax){
   const w = (r.D_proj && dmax) ? Math.max(4, Math.min(100, r.D_proj / dmax * 100)) : 0;
@@ -173,16 +178,18 @@ function dispStat(r, o3, dmax){
 }
 function goalStat(r, o3){
   const any = r.G_any;
+  const hot = any !== null && any > HOT;
   const w = any === null ? 0 : Math.max(2, any);
   const pc = any === null ? 'lo' : pctCls(any);
-  const badge = r.G_floor >= 1
+  const floorBadge = r.G_floor >= 1
       ? ' <span class="badge yes">back ' + r.G_floor + '+</span>' : '';
+  const hotBadge = hot ? ' <span class="badge hot">very likely</span>' : '';
   const big = any === null ? DASH : Math.round(any) + '%';
   const det = 'proj ' + f1(r.G_proj) + DOT + 'avg ' + f1(r.G_avg) + DOT +
               'L5 ' + f1(r.G_L5) + DOT + 'v' + o3 + ' ' + f1(r.G_vs) + ' (' + r.D_n + ')';
-  return '<div class="stat goal"><div class="lbl"><span>Goals</span>'+
+  return '<div class="stat goal' + (hot ? ' hot' : '') + '"><div class="lbl"><span>Goals</span>'+
     '<span>1+ rate</span></div>'+
-    '<div class="big pct ' + pc + '">' + big + badge + '</div>'+
+    '<div class="big pct ' + pc + '">' + big + floorBadge + hotBadge + '</div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det">' + det + '</div></div>';
 }
@@ -220,8 +227,9 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
 
     legend = (
         '<div class="legend">'
-        f'<span><b>min</b> disposal floor &mdash; hit in &ge;{cpc}% of recent games</span>'
+        f'<span><b>min</b> disposal floor &mdash; projection minus a {cpc}% margin of safety</span>'
         '<span><b>1+ rate</b> share of recent games with a goal</span>'
+        '<span><b class="pct elite">&gt;85%</b> very likely to goal</span>'
         '<span><b class="pct hi">back k+</b> matchup backs &ge;k goals</span>'
         '<span><b>proj</b> blended projection</span>'
         '</div>'
@@ -233,12 +241,14 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF):
                      f'current-season data for: {names}.</li>')
     notes = (
         '<div class="notes"><h3>Method &amp; caveats</h3><ul>'
-        f'<li><b>Disposal floor</b> &mdash; the {cpc}th-percentile of recent games '
-        '(empirical), so the margin scales with each player\'s own volatility. '
-        'Capped at the projection.</li>'
+        f'<li><b>Disposal floor</b> &mdash; the projection minus a margin of safety '
+        f'(z<sub>{cpc}%</sub> &times; the player\'s recent std-dev), so erratic players are '
+        'discounted more. Under a normal approximation they clear it in '
+        f'~{cpc}% of games.</li>'
         f'<li><b>Goal floor</b> &mdash; largest k with P(&ge;k)&ge;{cpc}% under '
         'Poisson(&lambda;=projection); shown as the green <span class="chip">back k+</span> '
-        'badge. <b>1+ rate</b> is the separate empirical scoring reliability.</li>'
+        'badge. <b>1+ rate</b> is the separate empirical scoring reliability &mdash; above '
+        '<b>85%</b> it is flagged <span class="chip">very likely</span>.</li>'
         '<li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; with H2H: '
         '<span class="chip">0.70&middot;season + 0.20&middot;L5 + 0.10&middot;H2H</span>, '
         'without: <span class="chip">0.85&middot;season + 0.15&middot;L5</span>; '

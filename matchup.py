@@ -14,6 +14,8 @@ Usage:
 """
 import argparse
 import math
+from statistics import NormalDist
+
 import numpy as np
 import pandas as pd
 
@@ -46,9 +48,11 @@ def last_n_mean(g: pd.DataFrame, col: str, n: int = FORM_GAMES) -> float:
 
 
 # ── Confidence floors ───────────────────────────────────────────────────────────
-# A "floor" is the value a player has met-or-exceeded in `conf` of their recent
-# games — an empirical low percentile, so the margin scales with each player's
-# own volatility rather than a flat subtraction.
+# The disposal floor is the *projection minus a margin of safety*. The margin is
+# volatility-scaled (z(conf) * sigma of recent games), so erratic players are
+# discounted more, and under a normal approximation the player clears the floor in
+# ~conf of games. It is anchored on the matchup-aware projection, not the raw
+# recent distribution.
 
 def recent_for_team(df: pd.DataFrame, team: str, player: str,
                     n: int = FLOOR_GAMES, min_n: int = 8) -> pd.DataFrame:
@@ -63,13 +67,22 @@ def recent_for_team(df: pd.DataFrame, team: str, player: str,
     return g.tail(max(n, min_n))
 
 
-def disposal_floor(series: pd.Series, conf: float = DEFAULT_CONF) -> float:
-    """Disposals met-or-exceeded in `conf` of recent games (rounded down)."""
+def disposal_floor(proj: float, series: pd.Series, conf: float = DEFAULT_CONF) -> float:
+    """Projected disposals minus a volatility-scaled margin of safety.
+
+    margin = z(conf) * sigma, where sigma is the std of the player's recent games
+    and z(conf) is the one-sided normal quantile (conf=0.75 -> z~0.67). Under a
+    normal approximation the player clears `proj - margin` in ~conf of games.
+    Rounded down; never below 0. With <3 games to gauge spread, falls back to a
+    flat 15% haircut on the projection."""
+    if proj is None or pd.isna(proj):
+        return float("nan")
     s = series.dropna()
     if len(s) < 3:
-        return float(s.min()) if len(s) else float("nan")
-    q = np.quantile(s.values, 1.0 - conf)   # lower tail: P(X >= q) ~= conf
-    return float(np.floor(q))
+        return float(max(0.0, np.floor(proj * 0.85)))
+    sigma = float(s.std(ddof=1))
+    margin = NormalDist().inv_cdf(conf) * sigma
+    return float(max(0.0, np.floor(proj - margin)))
 
 
 def goal_floor(proj: float, conf: float = DEFAULT_CONF) -> int:
@@ -137,10 +150,8 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
         recent = recent_for_team(df, team, player)
         d_proj = project(d_l5, d_vs, d_avg, has)
         g_proj = project(g_l5, g_vs, g_avg, has)
-        d_floor = disposal_floor(recent["disposals"], conf)
-        # A floor should never exceed the projection it sits beneath.
-        if pd.notna(d_floor) and pd.notna(d_proj):
-            d_floor = min(d_floor, float(np.floor(d_proj)))
+        # Floor = projection minus a volatility-scaled margin of safety.
+        d_floor = disposal_floor(d_proj, recent["disposals"], conf)
         rows.append({
             "player": player, "GP": gp, "R_n": len(recent),
             "D_avg": d_avg, "D_L5": d_l5, "D_vs": d_vs, "D_n": len(vg),
