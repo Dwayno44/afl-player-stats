@@ -21,14 +21,16 @@ import pandas as pd
 
 CURRENT_SEASON = 2026
 
-# Projection weights — season average anchors the projection, with recent form a
-# small nudge and head-to-head a minor adjustment. These were chosen by walk-forward
-# backtest (see backtest.py): season-heavy weights minimise out-of-sample MAE, because
-# H2H samples (1-3 games) are too thin to trust and season average is the most stable,
-# most predictive single input. A pure-season baseline beat the old form/H2H-heavy blend.
-W_WITH_H2H    = {"form": 0.20, "h2h": 0.10, "season": 0.70}
-W_WITHOUT_H2H = {"form": 0.15, "season": 0.85}
-FORM_GAMES    = 5      # "recent form" window (most recent games this season)
+# Projection weights — season average anchors the projection; recent form is spread
+# across three windows (L3/L5/L10) and head-to-head is a minor adjustment. Chosen by
+# walk-forward backtest with 5-fold CV (see backtest.py): season-heavy weights minimise
+# out-of-sample MAE. The form windows are collinear, so the backtest assigns only a small
+# combined weight to them — L10 carries most of the "recent form" signal and L5 the least
+# (its CV-optimal weight is ~0; a small floor is kept so all three windows contribute).
+FORM_WINDOWS  = (3, 5, 10)   # recent-form averages, each a separately-weighted feature
+W_WITH_H2H    = {"L3": 0.15, "L5": 0.05, "L10": 0.05, "h2h": 0.10, "season": 0.65}
+W_WITHOUT_H2H = {"L3": 0.15, "L5": 0.05, "L10": 0.25, "season": 0.55}
+FORM_GAMES    = 5      # window shown as "L5" in the views (the projection uses all of FORM_WINDOWS)
 FLOOR_GAMES   = 15     # recent-game sample used to estimate confidence floors
 DEFAULT_CONF  = 0.75   # target confidence for floor numbers (75%)
 
@@ -45,6 +47,13 @@ def load(csv: str) -> pd.DataFrame:
 def last_n_mean(g: pd.DataFrame, col: str, n: int = FORM_GAMES) -> float:
     s = g.sort_values("round").tail(n)[col]
     return s.mean() if len(s) else float("nan")
+
+
+def form_means(g: pd.DataFrame, col: str, windows=FORM_WINDOWS) -> dict:
+    """{f'L{w}': mean of the player's last w games (this season)} for each window.
+    Early in the season a window simply averages the games available."""
+    s = g.sort_values("round")[col]
+    return {f"L{w}": (s.tail(w).mean() if len(s) else float("nan")) for w in windows}
 
 
 # ── Confidence floors ───────────────────────────────────────────────────────────
@@ -122,13 +131,14 @@ def h2h_weighted(vg: pd.DataFrame, col: str) -> float:
     return (vg[col] * w).sum() / w.sum()
 
 
-def project(form, h2h, season, has_h2h):
-    """Weighted blend: recent form + head-to-head dominate; season is a stabiliser."""
+def project(forms: dict, h2h, season, has_h2h):
+    """Weighted blend of the form windows (L3/L5/L10), head-to-head and season
+    average. `forms` maps each window key to its average; season anchors the blend."""
     if has_h2h and pd.notna(h2h):
         w = W_WITH_H2H
-        return w["form"] * form + w["h2h"] * h2h + w["season"] * season
+        return sum(w[k] * forms[k] for k in forms) + w["h2h"] * h2h + w["season"] * season
     w = W_WITHOUT_H2H
-    return w["form"] * form + w["season"] * season
+    return sum(w[k] * forms[k] for k in forms) + w["season"] * season
 
 
 def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
@@ -140,16 +150,18 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
     for player, g in cur.groupby("player"):
         gp = g["round"].nunique()
         vg = vs[vs.player == player]
-        d_avg, d_l5 = g["disposals"].mean(), last_n_mean(g, "disposals")
-        g_avg, g_l5 = g["goals"].mean(),     last_n_mean(g, "goals")
+        d_forms = form_means(g, "disposals")
+        g_forms = form_means(g, "goals")
+        d_avg, d_l5 = g["disposals"].mean(), d_forms["L5"]
+        g_avg, g_l5 = g["goals"].mean(),     g_forms["L5"]
         d_vs = h2h_weighted(vg, "disposals")
         g_vs = h2h_weighted(vg, "goals")
         has = len(vg) >= 1
 
         # Confidence floors from the player's recent games for this club.
         recent = recent_for_team(df, team, player)
-        d_proj = project(d_l5, d_vs, d_avg, has)
-        g_proj = project(g_l5, g_vs, g_avg, has)
+        d_proj = project(d_forms, d_vs, d_avg, has)
+        g_proj = project(g_forms, g_vs, g_avg, has)
         # Floor = projection minus a volatility-scaled margin of safety.
         d_floor = disposal_floor(d_proj, recent["disposals"], conf)
         rows.append({
@@ -281,8 +293,8 @@ def to_html(home, away, view_home, view_away, path, csv, n):
     notes = (
         '<div class="notes"><h3>Method &amp; caveats</h3><ul>'
         '<li>Projection blend (backtest-tuned, season-anchored) &mdash; with H2H history: '
-        '<span class="chip">0.70&middot;season + 0.20&middot;L5 + 0.10&middot;H2H</span>; '
-        'without: <span class="chip">0.85&middot;season + 0.15&middot;L5</span>.</li>'
+        '<span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>; '
+        'without: <span class="chip">0.55&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.25&middot;L10</span>.</li>'
         '<li>Head-to-head is <b>recency-weighted</b> (2026 meetings count 3&times; a 2024 one).</li>'
         '<li>Blank goal cells in the source are treated as <b>0</b>, not missing.</li>'
         '<li>H2H samples are small (1&ndash;3 games) &mdash; trust the projection less when '
