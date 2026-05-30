@@ -197,7 +197,7 @@ function dispStat(r, o3, dmax){
   const det = 'proj ' + f1(r.D_proj) + DOT + 'avg ' + f1(r.D_avg) + DOT +
               'L5 ' + f1(r.D_L5) + DOT + 'v' + o3 + ' ' + f1(r.D_vs) + ' (' + r.D_n + ')';
   return '<div class="stat disp"><div class="lbl"><span>Disposals</span>'+
-    '<span>floor \\u00b7 ' + CONF + '%</span></div>'+
+    '<span>' + CONF + '% conf</span></div>'+
     '<div class="big">' + f0(r.D_floor) + '<span class="u">min</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det">' + det + '</div></div>';
@@ -212,7 +212,7 @@ function goalStat(r, o3, gmax){
   const det = 'proj ' + f1(r.G_proj) + DOT + 'avg ' + f1(r.G_avg) + DOT +
               'L5 ' + f1(r.G_L5) + DOT + 'v' + o3 + ' ' + f1(r.G_vs) + ' (' + r.D_n + ')';
   return '<div class="stat goal' + (backed ? ' hot' : '') + '"><div class="lbl"><span>Goals</span>'+
-    '<span>floor \\u00b7 ' + CONF + '%</span></div>'+
+    '<span>' + CONF + '% conf</span></div>'+
     '<div class="big">' + (floor === null ? DASH : floor) + '<span class="u">+ goals</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det"><b class="pct ' + pc + '">' + anyTxt + '</b> 1+ rate' + DOT + det + '</div></div>';
