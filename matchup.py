@@ -144,8 +144,15 @@ def project(forms: dict, h2h, season, has_h2h):
     return sum(w[k] * forms[k] for k in forms) + w["season"] * season
 
 
-def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
+def team_view(df: pd.DataFrame, team: str, opponent: str, n: int | None = None,
               conf: float = DEFAULT_CONF, goal_conf: float = GOAL_CONF) -> pd.DataFrame:
+    """One row per current-season player, sorted by disposal projection.
+
+    `n` caps the list to the top-n by game-time (the CLI default); pass None to
+    return every player (the web app does this and filters by floor in-browser).
+    `D_sigma` is the recent-games std-dev behind the disposal floor; it is carried
+    so the floor can be recomputed at any confidence level client-side. `D_floor`
+    is the floor at the server-side default `conf`."""
     cur = df[(df.team == team) & (df.season == CURRENT_SEASON)]
     vs  = df[(df.team == team) & (df.opponent == opponent)]   # all seasons
 
@@ -165,12 +172,16 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
         recent = recent_for_team(df, team, player)
         d_proj = project(d_forms, d_vs, d_avg, has)
         g_proj = project(g_forms, g_vs, g_avg, has)
-        # Floor = projection minus a volatility-scaled margin of safety.
+        # Floor = projection minus a volatility-scaled margin of safety. The std
+        # (sigma) is exposed so the client can rebuild the floor at any confidence;
+        # <3 recent games -> sigma None and a flat 15% haircut is used instead.
+        d_recent = recent["disposals"].dropna()
+        d_sigma = float(d_recent.std(ddof=1)) if len(d_recent) >= 3 else None
         d_floor = disposal_floor(d_proj, recent["disposals"], conf)
         rows.append({
             "player": player, "GP": gp, "R_n": len(recent),
             "D_avg": d_avg, "D_L5": d_l5, "D_vs": d_vs, "D_n": len(vg),
-            "D_proj": d_proj, "D_floor": d_floor,
+            "D_proj": d_proj, "D_floor": d_floor, "D_sigma": d_sigma,
             "G_avg": g_avg, "G_L5": g_l5, "G_vs": g_vs,
             "G_proj": g_proj,
             "G_floor": goal_floor(g_proj, goal_conf),
@@ -179,7 +190,9 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int,
 
     out = pd.DataFrame(rows)
     # "Key" players: most game time this season, then highest disposal projection.
-    out = out.sort_values(["GP", "D_proj"], ascending=False).head(n)
+    out = out.sort_values(["GP", "D_proj"], ascending=False)
+    if n:
+        out = out.head(n)
     return out.sort_values("D_proj", ascending=False).reset_index(drop=True)
 
 

@@ -48,11 +48,16 @@ def write_apple_icon(out_html_path: str, size: int = 180) -> str:
 
 
 def _view_to_records(view: pd.DataFrame) -> list[dict]:
-    """Round the projection view to plain JSON-friendly records (NaN -> None)."""
+    """Round the projection view to plain JSON-friendly records (NaN -> None).
+
+    D_proj and D_sigma are sent so the disposal floor can be rebuilt in-browser at
+    any confidence level (floor = proj - z(conf)*sigma); sigma keeps 2 dp so the
+    floor is exact after the floor()/round-down."""
     cols = ["player", "GP", "R_n",
-            "D_avg", "D_L5", "D_vs", "D_n", "D_proj", "D_floor",
+            "D_avg", "D_L5", "D_vs", "D_n", "D_proj", "D_sigma",
             "G_avg", "G_L5", "G_vs", "G_proj", "G_floor", "G_any"]
     ints = {"GP", "D_n", "R_n", "G_floor"}
+    round2 = {"D_sigma"}
     out = []
     for _, r in view[cols].iterrows():
         rec = {}
@@ -65,15 +70,17 @@ def _view_to_records(view: pd.DataFrame) -> list[dict]:
             elif c in ints:
                 rec[c] = int(v)
             else:
-                rec[c] = round(float(v), 1)
+                rec[c] = round(float(v), 2 if c in round2 else 1)
         out.append(rec)
     return out
 
 
-def build_games(df: pd.DataFrame, fixture: list[dict], n: int,
+def build_games(df: pd.DataFrame, fixture: list[dict],
                 conf: float = M.DEFAULT_CONF):
     """For each fixture game where both clubs have current-season data, attach
-    precomputed home/away projection views. Returns (games, skipped)."""
+    precomputed home/away projection views. Every current-season player is
+    included (sorted by disposal projection); the page filters by floor in-browser
+    so the floor>=10 cut tracks the confidence the user picks. Returns (games, skipped)."""
     have = set(df[df.season == M.CURRENT_SEASON]["team"].unique())
     games, skipped = [], []
     for g in fixture:
@@ -81,8 +88,8 @@ def build_games(df: pd.DataFrame, fixture: list[dict], n: int,
         if home not in have or away not in have:
             skipped.append(g)
             continue
-        vh = M.team_view(df, home, away, n, conf)
-        va = M.team_view(df, away, home, n, conf)
+        vh = M.team_view(df, home, away, None, conf)
+        va = M.team_view(df, away, home, None, conf)
         games.append({
             "round": g["round"], "date": g["date"], "venue": g["venue"],
             "home": home, "away": away,
@@ -114,7 +121,11 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
        background-position:calc(100% - 18px) 19px,calc(100% - 13px) 19px;
        background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 .meta{color:var(--mut);font-size:12.5px;margin:9px 2px 0}
+.dial{margin-top:9px}
+.dial label{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+            color:var(--mut);margin:0 2px 5px}
 .sub{color:var(--mut);font-size:12px;margin:10px 2px 14px}
+.empty{color:var(--mut);font-size:12.5px;padding:14px;font-style:italic}
 .legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;margin:12px 2px 16px}
 .legend b{color:var(--ink)}
 .games{display:grid;gap:14px}
@@ -157,6 +168,24 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .notes ul{margin:0;padding-left:18px}.notes li{margin:4px 0}
 .chip{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10.5px;
       background:var(--inset);border:1px solid var(--line)}
+/* betting-strategy panel (collapsible) */
+.strategy{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-top:16px}
+.strategy>summary{cursor:pointer;padding:14px 17px;font-size:13px;font-weight:600;color:var(--ink);
+       list-style:none;display:flex;justify-content:space-between;align-items:center}
+.strategy>summary::-webkit-details-marker{display:none}
+.strategy>summary::after{content:'\\002b';color:var(--mut);font-weight:700;font-size:16px}
+.strategy[open]>summary::after{content:'\\2212'}
+.strategy>summary:hover{color:var(--disp)}
+.stratbody{padding:0 17px 16px;color:var(--mut);font-size:12.5px}
+.stratbody b{color:var(--ink)}
+.stratbody ol{margin:4px 0 14px;padding-left:20px}.stratbody li{margin:5px 0}
+table.be{width:100%;border-collapse:collapse;margin:4px 0 12px;font-variant-numeric:tabular-nums}
+table.be th,table.be td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);font-size:12px}
+table.be th{color:var(--mut);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+table.be td:first-child,table.be th:first-child{text-align:left}
+table.be tr:last-child td{border-bottom:none}
+table.be td.be-ok{color:var(--good)}
+.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:#6b7681}
 @media(min-width:780px){
   .wrap{padding:0 20px 60px}
   h1{font-size:22px}
@@ -167,11 +196,16 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 
 _JS = """
 const DATA = __DATA__;
-const CONF = Math.round(DATA.conf * 100);
-const GCONF = Math.round(DATA.goal_conf * 100);
+const GCONF = Math.round(DATA.goal_conf * 100);   // goals: fixed (server-side)
+// One-sided normal quantiles for the four "mad cunt" disposal confidence levels.
+const Z = {90:1.2816, 85:1.0364, 80:0.8416, 75:0.6745};
+const FLOOR_MIN = 10;          // only show players whose disposal floor clears this
 const sel = document.getElementById('game');
+const madcunt = document.getElementById('madcunt');
 const out = document.getElementById('out');
 const meta = document.getElementById('meta');
+let curConf = parseInt(madcunt.value, 10);   // disposal confidence (toggled live)
+let curGame = 0;
 
 let curRound = null, og = null;
 DATA.games.forEach((g, i) => {
@@ -191,15 +225,24 @@ const DASH = '\\u2013', DOT = ' \\u00b7 ';
 const HOT = 85;   // 1+ goal rate above this is flagged as "very likely"
 function f1(v){ return v === null ? DASH : v.toFixed(1); }
 function f0(v){ return v === null ? DASH : Math.round(v).toString(); }
-function pctCls(p){ return p > HOT ? 'elite' : (p >= CONF ? 'hi' : (p >= 50 ? 'mid' : 'lo')); }
+function pctCls(p){ return p > HOT ? 'elite' : (p >= GCONF ? 'hi' : (p >= 50 ? 'mid' : 'lo')); }
+
+// Disposal floor rebuilt client-side at the chosen confidence: proj - z*sigma,
+// rounded down, never below 0. <3 recent games (sigma null) -> flat 15% haircut.
+function dispFloor(r, conf){
+  if (r.D_proj === null || r.D_proj === undefined) return null;
+  if (r.D_sigma === null) return Math.max(0, Math.floor(r.D_proj * 0.85));
+  return Math.max(0, Math.floor(r.D_proj - Z[conf] * r.D_sigma));
+}
 
 function dispStat(r, o3, dmax){
+  const floor = dispFloor(r, curConf);
   const w = (r.D_proj && dmax) ? Math.max(4, Math.min(100, r.D_proj / dmax * 100)) : 0;
   const det = 'proj ' + f1(r.D_proj) + DOT + 'avg ' + f1(r.D_avg) + DOT +
               'L5 ' + f1(r.D_L5) + DOT + 'v' + o3 + ' ' + f1(r.D_vs) + ' (' + r.D_n + ')';
   return '<div class="stat disp"><div class="lbl"><span>Disposals</span>'+
-    '<span>' + CONF + '% conf</span></div>'+
-    '<div class="big">' + f0(r.D_floor) + '<span class="u">min</span></div>'+
+    '<span>' + curConf + '% conf</span></div>'+
+    '<div class="big">' + f0(floor) + '<span class="u">min</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det">' + det + '</div></div>';
 }
@@ -220,10 +263,16 @@ function goalStat(r, o3, gmax){
 }
 function teamCard(side, team, opp, view){
   const o3 = opp.slice(0, 3);
-  const dmax = Math.max(...view.map(r => r.D_proj || 0), 1);
-  const gmax = Math.max(...view.map(r => r.G_proj || 0), 1);
+  // Filter to players whose disposal floor clears FLOOR_MIN at the chosen
+  // confidence; the cut moves with the toggle (looser conf -> higher floors).
+  const shown = view.filter(r => { const f = dispFloor(r, curConf); return f !== null && f >= FLOOR_MIN; });
+  if (!shown.length)
+    return '<div class="card ' + side + '"><h2>' + team + ' <small>vs ' + opp + '</small></h2>'+
+      '<div class="empty">No players clear a ' + FLOOR_MIN + '-disposal floor at ' + curConf + '% confidence.</div></div>';
+  const dmax = Math.max(...shown.map(r => r.D_proj || 0), 1);
+  const gmax = Math.max(...shown.map(r => r.G_proj || 0), 1);
   let rows = '';
-  view.forEach((r, i) => {
+  shown.forEach((r, i) => {
     rows += '<div class="prow"><div class="phead">'+
       '<div class="pname"><span class="rk">' + (i + 1) + '</span>' + r.player + '</div>'+
       '<div class="pmeta">' + r.GP + ' GP \\u00b7 ' + r.R_n + 'g</div></div>'+
@@ -233,13 +282,44 @@ function teamCard(side, team, opp, view){
     ' <small>vs ' + opp + '</small></h2>' + rows + '</div>';
 }
 function render(i){
+  curGame = i;
   const g = DATA.games[i];
   meta.textContent = 'Round ' + g.round + DOT + (g.date || '') + DOT + (g.venue || '');
   out.innerHTML =
     teamCard('home', g.home, g.away, g.home_view) +
     teamCard('away', g.away, g.home, g.away_view);
 }
+
+// Betting strategy + break-even odds, both driven by the chosen confidence.
+// Each leg ~= a player clearing their disposal floor (~conf% of the time), so the
+// fair per-leg price is 1/conf; n independent legs need (1/conf)^n.
+const BE_LEGS = [1, 2, 3, 4, 6, 8, 10];
+function renderStrategy(conf){
+  const p = conf / 100;
+  document.querySelectorAll('.beConf').forEach(el => { el.textContent = conf; });
+  document.getElementById('beThresh').textContent = (1 / p).toFixed(2);
+  document.getElementById('subDisp').textContent = conf;
+  let rows = '';
+  BE_LEGS.forEach(n => {
+    const wp = Math.pow(p, n) * 100;
+    const be = Math.pow(1 / p, n);
+    const tgt = Math.pow(1.05 / p, n);   // +5% edge per leg to justify the variance
+    rows += '<tr><td>' + n + (n === 1 ? ' (single)' : '') + '</td>'+
+      '<td>' + wp.toFixed(1) + '%</td>'+
+      '<td class="be-ok">$' + be.toFixed(2) + '</td>'+
+      '<td>$' + tgt.toFixed(2) + '</td></tr>';
+  });
+  document.getElementById('beBody').innerHTML = rows;
+}
+
 sel.addEventListener('change', e => render(+e.target.value));
+madcunt.addEventListener('change', e => {
+  curConf = parseInt(e.target.value, 10);
+  renderStrategy(curConf);
+  if (DATA.games.length) render(curGame);
+});
+
+renderStrategy(curConf);
 // Default to the next game that hasn't started yet (fall back to the first).
 const now = new Date();
 let start = DATA.games.findIndex(g => g.date && new Date(g.date.replace(' ', 'T')) >= now);
@@ -248,7 +328,7 @@ if (DATA.games.length) { sel.value = start; render(start); }
 """
 
 
-def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CONF):
+def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CONF):
     cpc = round(conf * 100)
     gpc = round(goal_conf * 100)
     data = {"generated": str(date.today()), "season": M.CURRENT_SEASON,
@@ -257,15 +337,57 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_
     js = _JS.replace("__DATA__", payload)
     icon = write_apple_icon(path)
 
+    # "How much of a mad cunt do you want to be?" dial -- toggles disposal confidence.
+    dial = (
+        '<div class="dial"><label for="madcunt">how much of a mad cunt do you want to be?</label>'
+        '<select id="madcunt" aria-label="Confidence level">'
+        '<option value="90">Barely a mad cunt at all (90%)</option>'
+        '<option value="85" selected>A bit of a mad cunt (85%)</option>'
+        '<option value="80">A proper mad cunt (80%)</option>'
+        '<option value="75">A real loose cunt (75%)</option>'
+        '</select></div>'
+    )
+
     legend = (
         '<div class="legend">'
-        f'<span><b>min</b> disposal floor &mdash; projection minus a {cpc}% margin of safety</span>'
+        '<span><b>min</b> disposal floor &mdash; projection minus your chosen margin of safety</span>'
         f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {gpc}% confidence</span>'
         '<span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span>'
         '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         '<span><b>proj</b> blended projection</span>'
         '</div>'
     )
+
+    # Folded-in betting insight from the singles-vs-multi break-even analysis.
+    strategy = (
+        '<details class="strategy"><summary>Betting strategy &mdash; singles vs multis</summary>'
+        '<div class="caveat">A floor is "<b>clears at <span class="beConf">85</span>%</b>", not '
+        '"wins your bet". It only pays if the bookie line sits <b>at or below</b> the floor, and '
+        'legs in a same-game multi are <b>correlated</b> &mdash; that correlation only ever helps '
+        'the book. Treat each leg as roughly a <span class="beConf">85</span>% shot and price '
+        'accordingly.</div>'
+        '<p class="rules">For the best outcome over time:</p>'
+        '<ol class="rules">'
+        '<li><b>Look for singles where the odds are at least $<span id="beThresh">1.18</span></b> '
+        '&mdash; that is the fair break-even price for a leg that clears '
+        '<span class="beConf">85</span>% of the time. Anything shorter is &minus;EV.</li>'
+        '<li><b>Prioritise singles over multis.</b> At fair odds extra legs add only variance, '
+        'never expected value; books also shade multi legs below the fair price.</li>'
+        '<li><b>If you must multi, fewer legs is better.</b> Each added leg multiplies the price '
+        'you need just to break even and widens the swings.</li>'
+        '</ol>'
+        '<p class="rules">Odds you need at the chosen confidence '
+        '(<span class="beConf">85</span>% per leg):</p>'
+        '<table class="be"><thead><tr><th>Legs</th><th>Win prob</th>'
+        '<th>Break-even odds</th><th>"Worth-it" target</th></tr></thead>'
+        '<tbody id="beBody"></tbody></table>'
+        '<div class="caveat"><b>Break-even</b> = (1/conf)<sup>legs</sup>; below it you lose long-run. '
+        '<b>"Worth-it" target</b> bakes in a ~5% edge per leg (1.05/conf)<sup>legs</sup> to justify '
+        'the added variance over singles &mdash; the gap widens fast, so big multis need generous '
+        'mispricing on every leg, which is rare.</div>'
+        '</details>'
+    )
+
     skip_note = ""
     if skipped:
         names = ", ".join(sorted({t for g in skipped for t in (g["home"], g["away"])}))
@@ -273,20 +395,22 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_
                      f'current-season data for: {names}.</li>')
     notes = (
         '<div class="notes"><h3>Method &amp; caveats</h3><ul>'
-        f'<li><b>Disposal floor</b> &mdash; the projection minus a margin of safety '
-        f'(z<sub>{cpc}%</sub> &times; the player\'s recent std-dev), so erratic players are '
-        'discounted more. Under a normal approximation they clear it in '
-        f'~{cpc}% of games.</li>'
+        '<li><b>Disposal floor</b> &mdash; the projection minus a margin of safety '
+        '(z<sub>conf</sub> &times; the player\'s recent std-dev), so erratic players are '
+        'discounted more. Under a normal approximation they clear it in about the chosen '
+        'confidence% of games. The dial above sets that confidence live.</li>'
         f'<li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;{gpc}% under '
         'Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell '
         f'is highlighted when the floor backs 1+ goal at {gpc}%. <b>1+ rate</b> is a supporting '
-        'figure &mdash; the separate empirical share of recent games with a goal.</li>'
+        'figure &mdash; the separate empirical share of recent games with a goal. Goals stay at '
+        f'{gpc}% regardless of the disposal dial.</li>'
         '<li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; recent form '
         'is split across three windows (L3/L5/L10). With H2H: '
         '<span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>, '
         'without: <span class="chip">0.55&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.25&middot;L10</span>; '
         'H2H is recency-weighted (2026 counts 3&times; a 2024 meeting).</li>'
-        f'<li>Top {n} players per club by game-time then disposal projection. '
+        '<li>Every current-season player is shown, sorted by disposal projection, '
+        '<b>filtered to a disposal floor of at least 10</b> at the chosen confidence. '
         'Floors use current-season games (recent games across seasons if too few).</li>'
         f'{skip_note}'
         '</ul></div>'
@@ -303,11 +427,13 @@ def to_html(games, skipped, path, csv, n, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_
 <body><div class="wrap">
 <header class="top"><h1>Punters Mate</h1>
 <select id="game" aria-label="Select match"></select>
+{dial}
 <p class="meta" id="meta"></p></header>
-<p class="sub">Confidence floors &middot; disposals {cpc}% &middot; goals {gpc}% &middot; \
+<p class="sub">Confidence floors &middot; disposals <span id="subDisp">{cpc}</span>% &middot; goals {gpc}% &middot; \
 {M.CURRENT_SEASON} &middot; generated {date.today()} &middot; source: {csv}</p>
 {legend}
 <div class="games" id="out"></div>
+{strategy}
 {notes}
 </div><script>{js}</script></body></html>"""
     with open(path, "w", encoding="utf-8") as f:
@@ -320,7 +446,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", default="games_2022_2026.csv")
     ap.add_argument("--year", type=int, default=M.CURRENT_SEASON)
-    ap.add_argument("--n", type=int, default=10)
     ap.add_argument("--conf", type=float, default=M.DEFAULT_CONF,
                     help="confidence level for floors (0-1, default 0.75)")
     ap.add_argument("--out", default="matchups.html")
@@ -348,8 +473,8 @@ def main():
                 json.dump(fixture, fh)
             print(f"Saved fixture to {args.fixture} ({len(fixture)} games)")
 
-    games, skipped = build_games(df, fixture, args.n, args.conf)
-    to_html(games, skipped, args.out, args.csv, args.n, args.conf)
+    games, skipped = build_games(df, fixture, args.conf)
+    to_html(games, skipped, args.out, args.csv, args.conf)
 
 
 if __name__ == "__main__":
