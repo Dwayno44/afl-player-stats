@@ -13,12 +13,13 @@ Usage:
 import argparse
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 
 import matchup as M
 import fixtures as F
+import lineups as L
 
 APPLE_ICON = "apple-touch-icon.png"
 
@@ -75,24 +76,65 @@ def _view_to_records(view: pd.DataFrame) -> list[dict]:
     return out
 
 
-def build_games(df: pd.DataFrame, fixture: list[dict],
-                conf: float = M.DEFAULT_CONF):
+LINEUP_WINDOW_DAYS = 9  # only chase named teams for games kicking off this soon
+
+
+def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEASON,
+                conf: float = M.DEFAULT_CONF, verify: bool = True):
     """For each fixture game where both clubs have current-season data, attach
     precomputed home/away projection views. Every current-season player is
     included (sorted by disposal projection); the page filters by floor in-browser
-    so the floor>=10 cut tracks the confidence the user picks. Returns (games, skipped)."""
-    have = set(df[df.season == M.CURRENT_SEASON]["team"].unique())
+    so the floor>=10 cut tracks the confidence the user picks.
+
+    When a game is within LINEUP_WINDOW_DAYS we pull the official named team from
+    the AFL API and drop players not in the 22 (so dropped/injured/managed players
+    disappear); each side is flagged `home_named`/`away_named`. If the team isn't
+    named yet (or the pull fails) we keep everyone and flag the side as not named.
+    Returns (games, skipped)."""
+    have = set(df[df.season == year]["team"].unique())
+    today = date.today()
+
+    lineup_cache: dict = {}
+
+    def lineups_for(rnd):
+        if rnd not in lineup_cache:
+            try:
+                lineup_cache[rnd] = L.named_players(df, year, int(rnd), verify=verify)
+            except Exception as e:  # network/parse/SSL -> degrade to "show all"
+                print(f"  lineup pull failed for round {rnd}: {type(e).__name__}: {e}")
+                lineup_cache[rnd] = {}
+        return lineup_cache[rnd]
+
     games, skipped = [], []
     for g in fixture:
         home, away = g["home"], g["away"]
         if home not in have or away not in have:
             skipped.append(g)
             continue
+
+        # Only the imminent round can have a posted lineup; skip the API for
+        # far-future games (they'd all return "not named" anyway).
+        within = False
+        try:
+            gd = datetime.strptime((g["date"] or "")[:10], "%Y-%m-%d").date()
+            within = 0 <= (gd - today).days <= LINEUP_WINDOW_DAYS
+        except ValueError:
+            within = False
+        lin = lineups_for(g["round"]) if within else {}
+        home_named, away_named = lin.get(home), lin.get(away)
+
         vh = M.team_view(df, home, away, None, conf)
         va = M.team_view(df, away, home, None, conf)
+        if home_named is not None:
+            vh = vh[vh["player"].isin(home_named)]
+        if away_named is not None:
+            va = va[va["player"].isin(away_named)]
+
         games.append({
             "round": g["round"], "date": g["date"], "venue": g["venue"],
             "home": home, "away": away,
+            "home_named": home_named is not None,
+            "away_named": away_named is not None,
             "home_view": _view_to_records(vh),
             "away_view": _view_to_records(va),
         })
@@ -135,6 +177,10 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .card.home h2{border-left:4px solid var(--home)}
 .card.away h2{border-left:4px solid var(--away)}
 .card h2 small{color:var(--mut);font-weight:400;font-size:12px}
+.lineup{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+        padding:3px 7px;border-radius:99px;white-space:nowrap;align-self:center}
+.lineup.named{color:#7ee2a8;background:rgba(63,185,80,.13);border:1px solid rgba(63,185,80,.35)}
+.lineup.pending{color:var(--mut);background:var(--inset);border:1px solid var(--line)}
 .prow{padding:12px 14px;border-bottom:1px solid var(--line)}
 .prow:last-child{border-bottom:none}
 .phead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:9px}
@@ -261,13 +307,19 @@ function goalStat(r, o3, gmax){
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det"><b class="pct ' + pc + '">' + anyTxt + '</b> 1+ rate' + DOT + det + '</div></div>';
 }
-function teamCard(side, team, opp, view){
+function teamCard(side, team, opp, view, named){
   const o3 = opp.slice(0, 3);
+  // Lineup badge: green when the official team is named (list filtered to the
+  // playing squad), muted when not yet named (showing all current-season players).
+  const tag = named
+    ? '<span class="lineup named">named team</span>'
+    : '<span class="lineup pending">team not yet named &middot; all players</span>';
+  const head = '<h2>' + team + ' <small>vs ' + opp + '</small>' + tag + '</h2>';
   // Filter to players whose disposal floor clears FLOOR_MIN at the chosen
   // confidence; the cut moves with the toggle (looser conf -> higher floors).
   const shown = view.filter(r => { const f = dispFloor(r, curConf); return f !== null && f >= FLOOR_MIN; });
   if (!shown.length)
-    return '<div class="card ' + side + '"><h2>' + team + ' <small>vs ' + opp + '</small></h2>'+
+    return '<div class="card ' + side + '">' + head +
       '<div class="empty">No players clear a ' + FLOOR_MIN + '-disposal floor at ' + curConf + '% confidence.</div></div>';
   const dmax = Math.max(...shown.map(r => r.D_proj || 0), 1);
   const gmax = Math.max(...shown.map(r => r.G_proj || 0), 1);
@@ -278,16 +330,15 @@ function teamCard(side, team, opp, view){
       '<div class="pmeta">' + r.GP + ' GP \\u00b7 ' + r.R_n + 'g</div></div>'+
       '<div class="stats">' + dispStat(r, o3, dmax) + goalStat(r, o3, gmax) + '</div></div>';
   });
-  return '<div class="card ' + side + '"><h2>' + team +
-    ' <small>vs ' + opp + '</small></h2>' + rows + '</div>';
+  return '<div class="card ' + side + '">' + head + rows + '</div>';
 }
 function render(i){
   curGame = i;
   const g = DATA.games[i];
   meta.textContent = 'Round ' + g.round + DOT + (g.date || '') + DOT + (g.venue || '');
   out.innerHTML =
-    teamCard('home', g.home, g.away, g.home_view) +
-    teamCard('away', g.away, g.home, g.away_view);
+    teamCard('home', g.home, g.away, g.home_view, g.home_named) +
+    teamCard('away', g.away, g.home, g.away_view, g.away_named);
 }
 
 // Betting strategy + break-even odds, both driven by the chosen confidence.
@@ -409,9 +460,14 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         '<span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>, '
         'without: <span class="chip">0.55&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.25&middot;L10</span>; '
         'H2H is recency-weighted (2026 counts 3&times; a 2024 meeting).</li>'
-        '<li>Every current-season player is shown, sorted by disposal projection, '
+        '<li>Players are sorted by disposal projection and '
         '<b>filtered to a disposal floor of at least 10</b> at the chosen confidence. '
         'Floors use current-season games (recent games across seasons if too few).</li>'
+        '<li><b>Named teams</b> &mdash; once the official team is posted (usually Thursday '
+        'night), the list is cut to the named 22 (emergencies excluded) and the card shows '
+        '<span class="lineup named">named team</span>. Until then it shows '
+        '<span class="lineup pending">team not yet named</span> and lists every current-season '
+        'player. Source: the AFL API.</li>'
         f'{skip_note}'
         '</ul></div>'
     )
@@ -473,7 +529,7 @@ def main():
                 json.dump(fixture, fh)
             print(f"Saved fixture to {args.fixture} ({len(fixture)} games)")
 
-    games, skipped = build_games(df, fixture, args.conf)
+    games, skipped = build_games(df, fixture, args.year, args.conf, verify=not args.insecure)
     to_html(games, skipped, args.out, args.csv, args.conf)
 
 
