@@ -1,25 +1,37 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Punters Mate 2026</title>
+<link rel="icon" type="image/svg+xml" href="punters-mate-icon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<link rel="icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#082E86">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Punters Mate">
 <style>
-:root{--bg:#0f1419;--card:#1a2027;--inset:#0c1116;--line:#2c3540;--ink:#e6edf3;
-      --mut:#8b98a5;--disp:#3b82f6;--goal:#f59e0b;--home:#1f6feb;--away:#d62828;
-      --good:#3fb950;--mid:#d4a72c;}
+/* Brand palette echoes the app icon: analogous blues, white ball, gold goal.
+   Cards are translucent "glass" floating over a fixed blue mesh gradient. */
+:root{--bg:#071a40;--card:rgba(16,44,102,.55);--inset:rgba(6,18,46,.55);
+      --line:rgba(255,255,255,.12);--ink:#eef3ff;--mut:#9fb2dd;
+      --disp:#4f9bff;--goal:#ffb23e;--home:#4f9bff;--away:#ff7a59;
+      --good:#46d39a;--mid:#e8b54a;--brand:#3D8BFF;}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);
+body{margin:0;min-height:100vh;color:var(--ink);background:#050f2b;
+     background-image:radial-gradient(130% 95% at 25% -8%,#2f74ef 0%,#1551bf 28%,#0c357f 50%,#071f49 74%,#040d28 100%);
+     background-attachment:fixed;
      font:15px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:0 12px 48px}
 /* sticky picker so you can switch games while scrolling on a phone */
-header.top{position:sticky;top:0;z-index:10;background:var(--bg);
+header.top{position:sticky;top:0;z-index:10;
+           background:linear-gradient(180deg,rgba(5,16,43,.92),rgba(5,16,43,.72));
+           backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
            padding:12px 0 10px;border-bottom:1px solid var(--line)}
-h1{font-size:17px;margin:0 0 8px;letter-spacing:.01em}
-select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(--line);
+.brand{display:flex;align-items:center;gap:10px;margin:0 0 9px}
+.logo{width:32px;height:32px;border-radius:9px;flex:none;
+      box-shadow:0 3px 10px rgba(4,18,60,.5)}
+h1{font-size:17px;margin:0;letter-spacing:.01em;font-weight:700}
+select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid var(--line);
        border-radius:10px;padding:12px 12px;font-size:16px;-webkit-appearance:none;
        appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),
        linear-gradient(135deg,var(--mut) 50%,transparent 50%);
@@ -34,7 +46,9 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;margin:12px 2px 16px}
 .legend b{color:var(--ink)}
 .games{display:grid;gap:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+      box-shadow:0 8px 26px rgba(3,14,44,.35)}
 .card h2{margin:0;padding:12px 15px;font-size:15px;border-bottom:1px solid var(--line);
          display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .card.home h2{border-left:4px solid var(--home)}
@@ -59,7 +73,7 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .stat.disp .big{color:#cfe0ff}.stat.goal .big{color:#ffe2b3}
 .stat .big .u{font-size:11px;font-weight:600;color:var(--mut);margin-left:3px}
 .proj{display:inline-block;font-size:11px;font-weight:600;color:var(--mut)}
-.bar{height:6px;border-radius:99px;background:#222c36;overflow:hidden;margin:7px 0 6px}
+.bar{height:6px;border-radius:99px;background:rgba(255,255,255,.13);overflow:hidden;margin:7px 0 6px}
 .bar>span{display:block;height:100%;border-radius:99px}
 .stat.disp .bar>span{background:var(--disp)}.stat.goal .bar>span{background:var(--goal)}
 .det{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
@@ -70,15 +84,17 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .pct.elite{color:var(--good);font-weight:800}
 /* goal floor backs 1+ goals at the confidence level — flag the whole goal cell */
 .stat.goal.hot{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
-.na{color:#56606b}
-.notes{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 17px;
-       color:var(--mut);font-size:12px;margin-top:16px}
+.na{color:#6b7aa6}
+.notes{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 17px;
+       color:var(--mut);font-size:12px;margin-top:16px;
+       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .notes h3{color:var(--ink);margin:0 0 8px;font-size:13px}
 .notes ul{margin:0;padding-left:18px}.notes li{margin:4px 0}
 .chip{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10.5px;
       background:var(--inset);border:1px solid var(--line)}
 /* betting-strategy panel (collapsible) */
-.strategy{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-top:16px}
+.strategy{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:16px;
+       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .strategy>summary{cursor:pointer;padding:14px 17px;font-size:13px;font-weight:600;color:var(--ink);
        list-style:none;display:flex;justify-content:space-between;align-items:center}
 .strategy>summary::-webkit-details-marker{display:none}
@@ -94,7 +110,7 @@ table.be th{color:var(--mut);font-weight:600;font-size:10.5px;text-transform:upp
 table.be td:first-child,table.be th:first-child{text-align:left}
 table.be tr:last-child td{border-bottom:none}
 table.be td.be-ok{color:var(--good)}
-.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:#6b7681}
+.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:#8092bd}
 @media(min-width:780px){
   .wrap{padding:0 20px 60px}
   h1{font-size:22px}
@@ -103,7 +119,7 @@ table.be td.be-ok{color:var(--good)}
 @media(max-width:340px){.stats{grid-template-columns:1fr}}
 </style></head>
 <body><div class="wrap">
-<header class="top"><h1>Punters Mate</h1>
+<header class="top"><div class="brand"><img class="logo" src="punters-mate-icon.svg" alt=""><h1>Punters Mate</h1></div>
 <select id="game" aria-label="Select match"></select>
 <div class="dial"><label for="madcunt">how much of a mad cunt do you want to be?</label><select id="madcunt" aria-label="Confidence level"><option value="90">Barely a mad cunt at all (90%)</option><option value="85" selected>A bit of a mad cunt (85%)</option><option value="80">A proper mad cunt (80%)</option><option value="75">A real loose cunt (75%)</option></select></div>
 <p class="meta" id="meta"></p></header>

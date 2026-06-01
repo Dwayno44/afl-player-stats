@@ -21,31 +21,210 @@ import matchup as M
 import fixtures as F
 import lineups as L
 
-APPLE_ICON = "apple-touch-icon.png"
+ICON_SVG = "punters-mate-icon.svg"      # vector favicon / logo (shipped as-is)
+APPLE_ICON = "apple-touch-icon.png"     # iOS home screen (180)
+ICON_512 = "icon-512.png"               # PWA / Android maskable
+MANIFEST = "site.webmanifest"
+
+# The production icon (1024 canvas). Kept here so a build emits every asset it
+# references, wherever --out points. Mirrors docs/punters-mate-icon.svg.
+_ICON_SVG_SRC = """<svg width="1024" height="1024" viewBox="0 0 1024 1024" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Punters Mate app icon</title>
+  <defs>
+    <clipPath id="iconClip"><rect x="0" y="0" width="1024" height="1024" rx="230"/></clipPath>
+    <radialGradient id="meshBlue" cx="30%" cy="22%" r="95%">
+      <stop offset="0%" stop-color="#3D8BFF"/><stop offset="45%" stop-color="#1A63DC"/>
+      <stop offset="100%" stop-color="#082E86"/>
+    </radialGradient>
+    <linearGradient id="topGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="35%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ballSheen" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/><stop offset="60%" stop-color="#f2f5fb"/>
+      <stop offset="100%" stop-color="#dde6f4"/>
+    </linearGradient>
+    <filter id="ballShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#041d54" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <g clip-path="url(#iconClip)">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#meshBlue)"/>
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#topGlow)"/>
+    <line x1="328" y1="430" x2="328" y2="760" stroke="#ffffff" stroke-width="22" stroke-linecap="round" opacity="0.26"/>
+    <line x1="696" y1="430" x2="696" y2="760" stroke="#ffffff" stroke-width="22" stroke-linecap="round" opacity="0.26"/>
+    <line x1="426" y1="300" x2="426" y2="760" stroke="#ffffff" stroke-width="27" stroke-linecap="round" opacity="0.34"/>
+    <line x1="598" y1="300" x2="598" y2="760" stroke="#ffffff" stroke-width="27" stroke-linecap="round" opacity="0.34"/>
+    <path d="M376 788 Q472 612 530 532" fill="none" stroke="#ffffff" stroke-width="17"
+          stroke-linecap="round" stroke-dasharray="6 52" opacity="0.95"/>
+    <g filter="url(#ballShadow)">
+      <ellipse cx="530" cy="470" rx="128" ry="184" fill="url(#ballSheen)" transform="rotate(22 530 470)"/>
+    </g>
+    <g transform="rotate(22 530 470)">
+      <ellipse cx="530" cy="470" rx="128" ry="184" fill="none" stroke="#c2d2ec" stroke-width="4"/>
+      <ellipse cx="488" cy="400" rx="48" ry="76" fill="#ffffff" opacity="0.6"/>
+      <line x1="530" y1="312" x2="530" y2="628" stroke="#0C3FA5" stroke-width="11" stroke-linecap="round"/>
+      <line x1="498" y1="402" x2="562" y2="402" stroke="#0C3FA5" stroke-width="9" stroke-linecap="round"/>
+      <line x1="498" y1="470" x2="562" y2="470" stroke="#0C3FA5" stroke-width="9" stroke-linecap="round"/>
+      <line x1="498" y1="538" x2="562" y2="538" stroke="#0C3FA5" stroke-width="9" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
+"""
 
 
-def write_apple_icon(out_html_path: str, size: int = 180) -> str:
-    """Draw a simple AFL-football home-screen icon next to the output HTML.
+def _render_icon(S: int):
+    """Reproduce ICON_SVG (AFL ball through the goals on a blue mesh) with PIL,
+    rendered at S px. We can't rasterise the SVG (no cairo/rsvg on this box), so
+    this mirrors the SVG's 1024-canvas geometry; callers supersample + downscale
+    for clean edges. iOS/Android need PNG (they ignore SVG home-screen icons)."""
+    import math
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFilter
 
-    iOS ignores data-URI apple-touch-icons, so we emit a real PNG and reference
-    it relatively. Full-bleed dark background since iOS masks the icon to a
-    rounded squircle. Returns the relative filename for the <link>."""
-    from PIL import Image, ImageDraw
+    k = S / 1024.0
 
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(out_html_path)), APPLE_ICON)
-    img = Image.new("RGB", (size, size), (15, 20, 25))      # --bg
-    d = ImageDraw.Draw(img)
-    cx, cy = size / 2, size / 2
-    rw, rh = size * 0.27, size * 0.42
-    d.ellipse([cx - rw, cy - rh, cx + rw, cy + rh], fill=(245, 158, 11))   # footy, --goal amber
-    seam = max(3, int(size * 0.022))
-    d.line([(cx, cy - rh * 0.72), (cx, cy + rh * 0.72)], fill=(15, 20, 25), width=seam)
-    lace = max(2, int(size * 0.012))
-    for t in range(-3, 4):
-        y = cy + t * rh * 0.155
-        d.line([(cx - size * 0.05, y), (cx + size * 0.05, y)], fill=(15, 20, 25), width=lace)
-    img.save(icon_path, "PNG")
-    return APPLE_ICON
+    def s(v):
+        return v * k
+
+    # ── radial mesh-blue background ──
+    cx, cy, rr = 0.30 * S, 0.22 * S, 0.95 * S
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float32)
+    t = np.clip(np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2) / rr, 0.0, 1.0)
+    c0 = np.array([0x3D, 0x8B, 0xFF], np.float32)
+    c1 = np.array([0x1A, 0x63, 0xDC], np.float32)
+    c2 = np.array([0x08, 0x2E, 0x86], np.float32)
+    a = (t / 0.45)[..., None]
+    b = ((t - 0.45) / 0.55)[..., None]
+    col = np.where(t[..., None] <= 0.45, c0 * (1 - a) + c1 * a, c1 * (1 - b) + c2 * b)
+    img = Image.fromarray(np.clip(col, 0, 255).astype(np.uint8), "RGB").convert("RGBA")
+
+    # ── top sheen (white .22 -> 0 over the top 35%) ──
+    glow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    h = max(1, int(0.35 * S))
+    for y in range(h):
+        gd.line([(0, y), (S, y)], fill=(255, 255, 255, int(0.22 * 255 * (1 - y / h))))
+    img = Image.alpha_composite(img, glow)
+
+    # ── goal apparatus + motion arc (own layer for true opacity) ──
+    ov = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    od = ImageDraw.Draw(ov)
+
+    def vpost(x, y1, y2, w, op):
+        c = (255, 255, 255, int(op * 255))
+        r = s(w) / 2
+        od.line([(s(x), s(y1)), (s(x), s(y2))], fill=c, width=max(1, round(s(w))))
+        for y in (y1, y2):  # round caps
+            od.ellipse([s(x) - r, s(y) - r, s(x) + r, s(y) + r], fill=c)
+
+    vpost(328, 430, 760, 22, 0.26)
+    vpost(696, 430, 760, 22, 0.26)
+    vpost(426, 300, 760, 27, 0.34)
+    vpost(598, 300, 760, 27, 0.34)
+
+    # dotted flight path along the quadratic bezier, dash 6 / gap 52
+    P0, P1, P2 = (376, 788), (472, 612), (530, 532)
+    pts = []
+    for i in range(401):
+        u = i / 400
+        bx = (1 - u) ** 2 * P0[0] + 2 * (1 - u) * u * P1[0] + u * u * P2[0]
+        by = (1 - u) ** 2 * P0[1] + 2 * (1 - u) * u * P1[1] + u * u * P2[1]
+        pts.append((bx, by))
+    cum = [0.0]
+    for i in range(1, len(pts)):
+        cum.append(cum[-1] + math.dist(pts[i], pts[i - 1]))
+    total, period, r = cum[-1], 6.0 + 52.0, s(17) / 2
+    dist = 0.0
+    j = 0
+    while dist < total:
+        while j < len(cum) - 1 and cum[j] < dist:
+            j += 1
+        px, py = pts[j]
+        od.ellipse([s(px) - r, s(py) - r, s(px) + r, s(py) + r], fill=(255, 255, 255, 242))
+        dist += period
+    img = Image.alpha_composite(img, ov)
+
+    # ── ball (built upright, then rotated 22° clockwise about its centre) ──
+    bx, by, rx, ry = 530, 470, 128, 184
+    top, bot = by - ry, by + ry
+    # vertical sheen gradient across the ball bbox
+    grad = np.empty((S, 3), np.float32)
+    w0 = np.array([255, 255, 255], np.float32)
+    w1 = np.array([0xF2, 0xF5, 0xFB], np.float32)
+    w2 = np.array([0xDD, 0xE6, 0xF4], np.float32)
+    for y in range(S):
+        f = np.clip((y / k - top) / (bot - top), 0.0, 1.0)
+        grad[y] = w0 + (w1 - w0) * (f / 0.6) if f <= 0.6 else w1 + (w2 - w1) * ((f - 0.6) / 0.4)
+    grad_img = Image.fromarray(np.repeat(np.clip(grad, 0, 255).astype(np.uint8)[:, None, :], S, axis=1), "RGB")
+
+    ball = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    bm = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(bm).ellipse([s(bx - rx), s(top), s(bx + rx), s(bot)], fill=255)
+    ball.paste(grad_img, (0, 0), bm)
+    bd = ImageDraw.Draw(ball)
+    bd.ellipse([s(bx - rx), s(top), s(bx + rx), s(bot)], outline=(0xC2, 0xD2, 0xEC, 255), width=max(1, round(s(4))))
+    hi = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(hi).ellipse([s(488 - 48), s(400 - 76), s(488 + 48), s(400 + 76)], fill=(255, 255, 255, int(0.6 * 255)))
+    ball = Image.alpha_composite(ball, hi)
+    bd = ImageDraw.Draw(ball)  # re-bind: alpha_composite returned a new image
+    seam = (0x0C, 0x3F, 0xA5, 255)
+
+    def cap_line(x1, y1, x2, y2, w):
+        r2 = s(w) / 2
+        bd.line([(s(x1), s(y1)), (s(x2), s(y2))], fill=seam, width=max(1, round(s(w))))
+        for (px, py) in ((x1, y1), (x2, y2)):
+            bd.ellipse([s(px) - r2, s(py) - r2, s(px) + r2, s(py) + r2], fill=seam)
+
+    cap_line(530, 312, 530, 628, 11)
+    cap_line(498, 402, 562, 402, 9)
+    cap_line(498, 470, 562, 470, 9)
+    cap_line(498, 538, 562, 538, 9)
+    ball = ball.rotate(-22, center=(s(bx), s(by)), resample=Image.BICUBIC)
+
+    # soft drop shadow from the ball silhouette
+    shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    sil = Image.new("RGBA", (S, S), (4, 29, 84, 255))
+    shadow.paste(sil, (0, round(s(14))), ball.split()[3])
+    shadow = shadow.filter(ImageFilter.GaussianBlur(s(20)))
+    shadow.putalpha(shadow.split()[3].point(lambda v: int(v * 0.45)))
+    img = Image.alpha_composite(img, shadow)
+    img = Image.alpha_composite(img, ball)
+
+    # ── rounded-tile clip (rx 230) ──
+    mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, S - 1, S - 1], radius=s(230), fill=255)
+    img.putalpha(mask)
+    return img
+
+
+def write_icons(out_html_path: str) -> dict:
+    """Emit the icon set next to the output HTML: the vector SVG (favicon/logo)
+    plus PNGs iOS/Android can use, and a web-app manifest. Returns the relative
+    filenames. PNGs are supersampled at 2x then downscaled for clean edges."""
+    from PIL import Image
+
+    out_dir = os.path.dirname(os.path.abspath(out_html_path))
+
+    with open(os.path.join(out_dir, ICON_SVG), "w", encoding="utf-8") as f:
+        f.write(_ICON_SVG_SRC)
+
+    master = _render_icon(2048)  # supersample, then downscale for clean edges
+    master.resize((180, 180), Image.LANCZOS).save(os.path.join(out_dir, APPLE_ICON))
+    master.resize((512, 512), Image.LANCZOS).save(os.path.join(out_dir, ICON_512))
+
+    manifest = {
+        "name": "Punters Mate", "short_name": "Punters Mate",
+        "display": "standalone", "background_color": "#061634", "theme_color": "#082E86",
+        "icons": [
+            {"src": ICON_SVG, "sizes": "any", "type": "image/svg+xml"},
+            {"src": ICON_512, "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }
+    with open(os.path.join(out_dir, MANIFEST), "w", encoding="utf-8") as f:
+        json.dump(manifest, f, separators=(",", ":"))
+
+    return {"svg": ICON_SVG, "png180": APPLE_ICON, "png512": ICON_512, "manifest": MANIFEST}
 
 
 def _view_to_records(view: pd.DataFrame) -> list[dict]:
@@ -144,19 +323,29 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
 # ── HTML shell (mobile-first; data injected as JSON, rendered in JS) ────────────
 
 _CSS = """
-:root{--bg:#0f1419;--card:#1a2027;--inset:#0c1116;--line:#2c3540;--ink:#e6edf3;
-      --mut:#8b98a5;--disp:#3b82f6;--goal:#f59e0b;--home:#1f6feb;--away:#d62828;
-      --good:#3fb950;--mid:#d4a72c;}
+/* Brand palette echoes the app icon: analogous blues, white ball, gold goal.
+   Cards are translucent "glass" floating over a fixed blue mesh gradient. */
+:root{--bg:#071a40;--card:rgba(16,44,102,.55);--inset:rgba(6,18,46,.55);
+      --line:rgba(255,255,255,.12);--ink:#eef3ff;--mut:#9fb2dd;
+      --disp:#4f9bff;--goal:#ffb23e;--home:#4f9bff;--away:#ff7a59;
+      --good:#46d39a;--mid:#e8b54a;--brand:#3D8BFF;}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);
+body{margin:0;min-height:100vh;color:var(--ink);background:#050f2b;
+     background-image:radial-gradient(130% 95% at 25% -8%,#2f74ef 0%,#1551bf 28%,#0c357f 50%,#071f49 74%,#040d28 100%);
+     background-attachment:fixed;
      font:15px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:0 12px 48px}
 /* sticky picker so you can switch games while scrolling on a phone */
-header.top{position:sticky;top:0;z-index:10;background:var(--bg);
+header.top{position:sticky;top:0;z-index:10;
+           background:linear-gradient(180deg,rgba(5,16,43,.92),rgba(5,16,43,.72));
+           backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
            padding:12px 0 10px;border-bottom:1px solid var(--line)}
-h1{font-size:17px;margin:0 0 8px;letter-spacing:.01em}
-select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(--line);
+.brand{display:flex;align-items:center;gap:10px;margin:0 0 9px}
+.logo{width:32px;height:32px;border-radius:9px;flex:none;
+      box-shadow:0 3px 10px rgba(4,18,60,.5)}
+h1{font-size:17px;margin:0;letter-spacing:.01em;font-weight:700}
+select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid var(--line);
        border-radius:10px;padding:12px 12px;font-size:16px;-webkit-appearance:none;
        appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),
        linear-gradient(135deg,var(--mut) 50%,transparent 50%);
@@ -171,7 +360,9 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;margin:12px 2px 16px}
 .legend b{color:var(--ink)}
 .games{display:grid;gap:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+      box-shadow:0 8px 26px rgba(3,14,44,.35)}
 .card h2{margin:0;padding:12px 15px;font-size:15px;border-bottom:1px solid var(--line);
          display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .card.home h2{border-left:4px solid var(--home)}
@@ -196,7 +387,7 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .stat.disp .big{color:#cfe0ff}.stat.goal .big{color:#ffe2b3}
 .stat .big .u{font-size:11px;font-weight:600;color:var(--mut);margin-left:3px}
 .proj{display:inline-block;font-size:11px;font-weight:600;color:var(--mut)}
-.bar{height:6px;border-radius:99px;background:#222c36;overflow:hidden;margin:7px 0 6px}
+.bar{height:6px;border-radius:99px;background:rgba(255,255,255,.13);overflow:hidden;margin:7px 0 6px}
 .bar>span{display:block;height:100%;border-radius:99px}
 .stat.disp .bar>span{background:var(--disp)}.stat.goal .bar>span{background:var(--goal)}
 .det{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
@@ -207,15 +398,17 @@ select{width:100%;background:var(--inset);color:var(--ink);border:1px solid var(
 .pct.elite{color:var(--good);font-weight:800}
 /* goal floor backs 1+ goals at the confidence level — flag the whole goal cell */
 .stat.goal.hot{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
-.na{color:#56606b}
-.notes{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px 17px;
-       color:var(--mut);font-size:12px;margin-top:16px}
+.na{color:#6b7aa6}
+.notes{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 17px;
+       color:var(--mut);font-size:12px;margin-top:16px;
+       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .notes h3{color:var(--ink);margin:0 0 8px;font-size:13px}
 .notes ul{margin:0;padding-left:18px}.notes li{margin:4px 0}
 .chip{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10.5px;
       background:var(--inset);border:1px solid var(--line)}
 /* betting-strategy panel (collapsible) */
-.strategy{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-top:16px}
+.strategy{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:16px;
+       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .strategy>summary{cursor:pointer;padding:14px 17px;font-size:13px;font-weight:600;color:var(--ink);
        list-style:none;display:flex;justify-content:space-between;align-items:center}
 .strategy>summary::-webkit-details-marker{display:none}
@@ -231,7 +424,7 @@ table.be th{color:var(--mut);font-weight:600;font-size:10.5px;text-transform:upp
 table.be td:first-child,table.be th:first-child{text-align:left}
 table.be tr:last-child td{border-bottom:none}
 table.be td.be-ok{color:var(--good)}
-.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:#6b7681}
+.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:#8092bd}
 @media(min-width:780px){
   .wrap{padding:0 20px 60px}
   h1{font-size:22px}
@@ -386,7 +579,7 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
             "conf": conf, "goal_conf": goal_conf, "games": games}
     payload = json.dumps(data, separators=(",", ":"))
     js = _JS.replace("__DATA__", payload)
-    icon = write_apple_icon(path)
+    icons = write_icons(path)
 
     # "How much of a mad cunt do you want to be?" dial -- toggles disposal confidence.
     dial = (
@@ -474,14 +667,16 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Punters Mate {M.CURRENT_SEASON}</title>
-<link rel="apple-touch-icon" sizes="180x180" href="{icon}">
-<link rel="icon" href="{icon}">
+<link rel="icon" type="image/svg+xml" href="{icons['svg']}">
+<link rel="apple-touch-icon" sizes="180x180" href="{icons['png180']}">
+<link rel="manifest" href="{icons['manifest']}">
+<meta name="theme-color" content="#082E86">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Punters Mate">
 <style>{_CSS}</style></head>
 <body><div class="wrap">
-<header class="top"><h1>Punters Mate</h1>
+<header class="top"><div class="brand"><img class="logo" src="{icons['svg']}" alt=""><h1>Punters Mate</h1></div>
 <select id="game" aria-label="Select match"></select>
 {dial}
 <p class="meta" id="meta"></p></header>
