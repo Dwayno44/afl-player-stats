@@ -352,9 +352,31 @@ select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid
        background-position:calc(100% - 18px) 19px,calc(100% - 13px) 19px;
        background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 .meta{color:var(--mut);font-size:12.5px;margin:9px 2px 0}
-.dial{margin-top:9px}
+.dial{margin-top:12px}
 .dial label{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
-            color:var(--mut);margin:0 2px 5px}
+            color:var(--mut);margin:0 2px 10px}
+/* the dial itself: a slider knob riding a green->amber->red risk track */
+#madcunt{-webkit-appearance:none;appearance:none;width:100%;height:26px;
+         background:transparent;cursor:pointer;margin:0}
+#madcunt::-webkit-slider-runnable-track{height:8px;border-radius:999px;
+  background:linear-gradient(90deg,var(--good),var(--goal) 55%,var(--away))}
+#madcunt::-moz-range-track{height:8px;border-radius:999px;
+  background:linear-gradient(90deg,var(--good),var(--goal) 55%,var(--away))}
+#madcunt::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;
+  margin-top:-10px;border-radius:50%;border:2px solid #fff;
+  background:radial-gradient(circle at 35% 30%,#fff,#cdd8f0);
+  box-shadow:0 3px 10px rgba(4,18,60,.6)}
+#madcunt::-moz-range-thumb{width:24px;height:24px;border-radius:50%;border:2px solid #fff;
+  background:radial-gradient(circle at 35% 30%,#fff,#cdd8f0);
+  box-shadow:0 3px 10px rgba(4,18,60,.6)}
+#madcunt:focus-visible{outline:none}
+#madcunt:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px rgba(61,139,255,.45)}
+.dial-ticks{display:flex;justify-content:space-between;gap:4px;margin:9px 1px 0}
+.dial-ticks span{flex:1;text-align:center;font-size:10.5px;line-height:1.25;color:var(--mut);
+  transition:color .15s ease}
+.dial-ticks span:first-child{text-align:left}
+.dial-ticks span:last-child{text-align:right}
+.dial-ticks span.on{color:var(--ink);font-weight:700}
 .sub{color:var(--mut);font-size:12px;margin:10px 2px 14px}
 .empty{color:var(--mut);font-size:12.5px;padding:14px;font-style:italic}
 .legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;margin:12px 2px 16px}
@@ -443,7 +465,11 @@ const sel = document.getElementById('game');
 const madcunt = document.getElementById('madcunt');
 const out = document.getElementById('out');
 const meta = document.getElementById('meta');
-let curConf = parseInt(madcunt.value, 10);   // disposal confidence (toggled live)
+const CONF_STEPS = [90, 85, 80, 75];   // dial index -> disposal confidence
+const DIAL_LABELS = ['Barely a mad cunt', 'A bit of a mad cunt',
+                     'A proper mad cunt', 'A real loose cunt'];
+const dialTicks = document.querySelectorAll('.dial-ticks span');
+let curConf = CONF_STEPS[parseInt(madcunt.value, 10)] || 85;   // disposal confidence (live)
 let curGame = 0;
 
 let curRound = null, og = null;
@@ -557,13 +583,16 @@ function renderStrategy(conf){
 }
 
 sel.addEventListener('change', e => render(+e.target.value));
-madcunt.addEventListener('change', e => {
-  curConf = parseInt(e.target.value, 10);
+function setDial(i){
+  curConf = CONF_STEPS[i];
+  madcunt.setAttribute('aria-valuetext', DIAL_LABELS[i]);
+  dialTicks.forEach((s, idx) => s.classList.toggle('on', idx === i));
   renderStrategy(curConf);
   if (DATA.games.length) render(curGame);
-});
+}
+madcunt.addEventListener('input', e => setDial(parseInt(e.target.value, 10)));
 
-renderStrategy(curConf);
+setDial(parseInt(madcunt.value, 10));
 // Default to the next game that hasn't started yet (fall back to the first).
 const now = new Date();
 let start = DATA.games.findIndex(g => g.date && new Date(g.date.replace(' ', 'T')) >= now);
@@ -581,15 +610,19 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
     js = _JS.replace("__DATA__", payload)
     icons = write_icons(path)
 
-    # "How much of a mad cunt do you want to be?" dial -- toggles disposal confidence.
+    # "How much of a mad cunt do you want to be?" dial -- a real slider knob that
+    # toggles disposal confidence. Steps map to 90/85/80/75 (see CONF_STEPS in JS).
     dial = (
-        '<div class="dial"><label for="madcunt">how much of a mad cunt do you want to be?</label>'
-        '<select id="madcunt" aria-label="Confidence level">'
-        '<option value="90">Barely a mad cunt at all (90%)</option>'
-        '<option value="85" selected>A bit of a mad cunt (85%)</option>'
-        '<option value="80">A proper mad cunt (80%)</option>'
-        '<option value="75">A real loose cunt (75%)</option>'
-        '</select></div>'
+        '<div class="dial"><label id="madcunt-label" for="madcunt">'
+        'how much of a mad cunt do you want to be?</label>'
+        '<input type="range" id="madcunt" min="0" max="3" step="1" value="1" '
+        'aria-labelledby="madcunt-label" aria-valuetext="A bit of a mad cunt">'
+        '<div class="dial-ticks">'
+        '<span>Barely a mad cunt</span>'
+        '<span>A bit of a mad cunt</span>'
+        '<span>A proper mad cunt</span>'
+        '<span>A real loose cunt</span>'
+        '</div></div>'
     )
 
     legend = (
