@@ -51,6 +51,8 @@ _ICON_SVG_SRC = """<svg width="1024" height="1024" viewBox="0 0 1024 1024" role=
   <g clip-path="url(#iconClip)">
     <rect x="0" y="0" width="1024" height="1024" fill="url(#meshBlue)"/>
     <rect x="0" y="0" width="1024" height="1024" fill="url(#topGlow)"/>
+    <!-- scale the goal+ball composition up about the centre so it reads at icon sizes -->
+    <g transform="translate(512 512) scale(1.3) translate(-512 -512)">
     <line x1="328" y1="430" x2="328" y2="760" stroke="#ffffff" stroke-width="22" stroke-linecap="round" opacity="0.26"/>
     <line x1="696" y1="430" x2="696" y2="760" stroke="#ffffff" stroke-width="22" stroke-linecap="round" opacity="0.26"/>
     <line x1="426" y1="300" x2="426" y2="760" stroke="#ffffff" stroke-width="27" stroke-linecap="round" opacity="0.34"/>
@@ -67,6 +69,7 @@ _ICON_SVG_SRC = """<svg width="1024" height="1024" viewBox="0 0 1024 1024" role=
       <line x1="498" y1="402" x2="562" y2="402" stroke="#0C3FA5" stroke-width="9" stroke-linecap="round"/>
       <line x1="498" y1="470" x2="562" y2="470" stroke="#0C3FA5" stroke-width="9" stroke-linecap="round"/>
       <line x1="498" y1="538" x2="562" y2="538" stroke="#0C3FA5" stroke-width="9" stroke-linecap="round"/>
+    </g>
     </g>
   </g>
 </svg>
@@ -143,7 +146,7 @@ def _render_icon(S: int):
         px, py = pts[j]
         od.ellipse([s(px) - r, s(py) - r, s(px) + r, s(py) + r], fill=(255, 255, 255, 242))
         dist += period
-    img = Image.alpha_composite(img, ov)
+    fg = ov  # foreground (posts/arc, then shadow + ball); scaled up before compositing
 
     # ── ball (built upright, then rotated 22° clockwise about its centre) ──
     bx, by, rx, ry = 530, 470, 128, 184
@@ -188,8 +191,15 @@ def _render_icon(S: int):
     shadow.paste(sil, (0, round(s(14))), ball.split()[3])
     shadow = shadow.filter(ImageFilter.GaussianBlur(s(20)))
     shadow.putalpha(shadow.split()[3].point(lambda v: int(v * 0.45)))
-    img = Image.alpha_composite(img, shadow)
-    img = Image.alpha_composite(img, ball)
+    fg = Image.alpha_composite(fg, shadow)
+    fg = Image.alpha_composite(fg, ball)
+
+    # scale the composition up about the tile centre (mirrors the SVG scale(1.3)
+    # group) so the ball + posts aren't lost at small home-screen sizes
+    SC = 1.3
+    big = fg.resize((round(S * SC), round(S * SC)), Image.BICUBIC)
+    off = round((S - S * SC) / 2)  # negative: recentres the enlarged layer
+    img.paste(big, (off, off), big)
 
     # ── rounded-tile clip (rx 230) ──
     mask = Image.new("L", (S, S), 0)
