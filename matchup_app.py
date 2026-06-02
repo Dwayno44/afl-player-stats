@@ -810,12 +810,12 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 <header class="top"><div class="brand"><img class="logo" src="{icons['svg']}" alt=""><h1>Punters Mate</h1></div>
 <select id="game" aria-label="Select match"></select>
 <p class="meta" id="meta"></p></header>
-<p class="sub">Confidence floors &middot; disposals <span id="subDisp">{cpc}</span>% &middot; goals {gpc}% &middot; \
-{M.CURRENT_SEASON} &middot; generated {date.today()} &middot; source: {csv}</p>
 <div class="games" id="out"></div>
 {strategy}
 {notes}
 {legend}
+<p class="sub">Confidence floors &middot; disposals <span id="subDisp">{cpc}</span>% &middot; goals {gpc}% &middot; \
+{M.CURRENT_SEASON} &middot; generated {date.today()} &middot; source: {csv}</p>
 </div><script>{js}</script></body></html>"""
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
