@@ -1,9 +1,12 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Punters Mate 2026</title>
+<title>PuntersMate</title>
 <link rel="icon" type="image/svg+xml" href="punters-mate-icon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="manifest" href="site.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;900&display=swap" rel="stylesheet">
 <meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -25,10 +28,12 @@ header.top{position:sticky;top:0;z-index:10;
            background:rgba(255,255,255,.92);
            backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
            padding:14px 0 11px;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:9px;margin:0 0 11px}
-.logo{width:28px;height:28px;border-radius:8px;flex:none;
-      box-shadow:0 2px 8px rgba(12,47,107,.18)}
-h1{font-size:20px;margin:0;letter-spacing:-.015em;font-weight:750;color:var(--ink);line-height:1}
+.brand{display:flex;align-items:center;gap:11px;margin:0 0 11px}
+.logo{width:34px;height:34px;flex:none;display:block}
+/* two-tone Archivo wordmark, reused from the app-icon lockup */
+.wordmark{font-family:'Archivo',system-ui,sans-serif;font-weight:900;font-size:22px;
+          letter-spacing:-.6px;color:var(--ink);line-height:1;margin:0}
+.wordmark span{color:var(--disp)}
 select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
        border-radius:10px;padding:12px 12px;font-size:16px;-webkit-appearance:none;
        appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),
@@ -96,44 +101,46 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .stat.disp.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
 .stat.disp.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
 .na{color:var(--mut)}
-.notes{background:var(--inset);border:1px solid var(--line);border-radius:16px;padding:15px 17px;
-       color:var(--mut);font-size:12px;margin-top:16px}
-.notes h3{color:var(--ink);margin:0 0 8px;font-size:13px}
-.notes ul{margin:0;padding-left:18px}.notes li{margin:4px 0}
+/* collapsible reference panels (betting strategy + method): one shared type
+   scale — 12.5px/1.55 body, 13px heads, 20px list indent, 6px between items */
+.strategy{background:var(--inset);border:1px solid var(--line);border-radius:16px;margin-top:16px}
+.stratbody li{margin:6px 0}
+.stratbody b{color:var(--ink)}
 .chip{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10.5px;
       background:#fff;border:1px solid var(--line)}
-/* betting-strategy panel (collapsible) */
-.strategy{background:var(--inset);border:1px solid var(--line);border-radius:16px;margin-top:16px}
-.strategy>summary{cursor:pointer;padding:14px 17px;font-size:13px;font-weight:600;color:var(--ink);
+.strategy>summary{cursor:pointer;padding:16px 17px;font-size:13px;font-weight:700;color:var(--ink);
        list-style:none;display:flex;justify-content:space-between;align-items:center}
 .strategy>summary::-webkit-details-marker{display:none}
 .strategy>summary::after{content:'\002b';color:var(--mut);font-weight:700;font-size:16px}
 .strategy[open]>summary::after{content:'\2212'}
 .strategy>summary:hover{color:var(--disp)}
-.stratbody{padding:0 17px 16px;color:var(--mut);font-size:12.5px}
-.stratbody b{color:var(--ink)}
-.stratbody ol{margin:4px 0 14px;padding-left:20px}.stratbody li{margin:5px 0}
-table.be{width:100%;border-collapse:collapse;margin:4px 0 12px;font-variant-numeric:tabular-nums}
-table.be th,table.be td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);font-size:12px}
+.stratbody{padding:0 17px 16px;color:var(--mut);font-size:12.5px;line-height:1.55}
+.stratbody ul{margin:8px 0 0;padding-left:20px}
+.stratbody ol{margin:10px 0 14px;padding-left:20px}
+.stratbody p.rules{margin:14px 0 8px;color:var(--ink);font-weight:600}
+table.be{width:100%;border-collapse:collapse;margin:10px 0 14px;font-variant-numeric:tabular-nums}
+table.be th,table.be td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);font-size:12.5px}
 table.be th{color:var(--mut);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
 table.be td:first-child,table.be th:first-child{text-align:left}
 table.be tr:last-child td{border-bottom:none}
 table.be td.be-ok{color:var(--good)}
-.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:var(--mut)}
+.caveat{font-size:12.5px;line-height:1.55;margin:10px 0 0;color:var(--mut)}
+.stratbody>.caveat:first-child{margin-top:0}
 @media(min-width:780px){
   .wrap{padding:0 20px 60px}
-  h1{font-size:22px}
+  .logo{width:38px;height:38px}
+  .wordmark{font-size:25px}
   .games{grid-template-columns:1fr 1fr;align-items:start}
 }
 @media(max-width:340px){.stats{grid-template-columns:1fr}}
 </style></head>
 <body><div class="wrap">
-<header class="top"><div class="brand"><img class="logo" src="punters-mate-icon.svg" alt=""><h1>Punters Mate</h1></div>
+<header class="top"><div class="brand"><svg class="logo" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Punters Mate"><defs><linearGradient id="pmBall" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0%" stop-color="#3D8BFF"/><stop offset="100%" stop-color="#1A63DC"/></linearGradient></defs><line x1="328" y1="430" x2="328" y2="760" stroke="#1A63DC" stroke-width="24" stroke-linecap="round" opacity="0.30"/><line x1="696" y1="430" x2="696" y2="760" stroke="#1A63DC" stroke-width="24" stroke-linecap="round" opacity="0.30"/><line x1="426" y1="300" x2="426" y2="760" stroke="#1A63DC" stroke-width="30" stroke-linecap="round" opacity="0.85"/><line x1="598" y1="300" x2="598" y2="760" stroke="#1A63DC" stroke-width="30" stroke-linecap="round" opacity="0.85"/><path d="M376 788 Q472 612 530 532" fill="none" stroke="#1A63DC" stroke-width="18" stroke-linecap="round" stroke-dasharray="2 58" opacity="0.55"/><g transform="rotate(22 530 470)"><ellipse cx="530" cy="470" rx="130" ry="186" fill="url(#pmBall)"/><line x1="530" y1="306" x2="530" y2="634" stroke="#fff" stroke-width="13" stroke-linecap="round"/><line x1="496" y1="400" x2="564" y2="400" stroke="#fff" stroke-width="10" stroke-linecap="round"/><line x1="496" y1="470" x2="564" y2="470" stroke="#fff" stroke-width="10" stroke-linecap="round"/><line x1="496" y1="540" x2="564" y2="540" stroke="#fff" stroke-width="10" stroke-linecap="round"/></g></svg><h1 class="wordmark">Punters<span>Mate</span></h1></div>
 <select id="game" aria-label="Select match"></select>
 <p class="meta" id="meta"></p></header>
 <div class="games" id="out"></div>
-<details class="strategy"><summary>Betting strategy &mdash; singles vs multis</summary><div class="caveat">A floor is "<b>clears at <span class="beConf">85</span>%</b>", not "wins your bet". It only pays if the bookie line sits <b>at or below</b> the floor, and legs in a same-game multi are <b>correlated</b> &mdash; that correlation only ever helps the book. Treat each leg as roughly a <span class="beConf">85</span>% shot and price accordingly.</div><p class="rules">For the best outcome over time:</p><ol class="rules"><li><b>Look for singles where the odds are at least $<span id="beThresh">1.18</span></b> &mdash; that is the fair break-even price for a leg that clears <span class="beConf">85</span>% of the time. Anything shorter is &minus;EV.</li><li><b>Prioritise singles over multis.</b> At fair odds extra legs add only variance, never expected value; books also shade multi legs below the fair price.</li><li><b>If you must multi, fewer legs is better.</b> Each added leg multiplies the price you need just to break even and widens the swings.</li></ol><p class="rules">Odds you need at the chosen confidence (<span class="beConf">85</span>% per leg):</p><table class="be"><thead><tr><th>Legs</th><th>Win prob</th><th>Break-even odds</th><th>"Worth-it" target</th></tr></thead><tbody id="beBody"></tbody></table><div class="caveat"><b>Break-even</b> = (1/conf)<sup>legs</sup>; below it you lose long-run. <b>"Worth-it" target</b> bakes in a ~5% edge per leg (1.05/conf)<sup>legs</sup> to justify the added variance over singles &mdash; the gap widens fast, so big multis need generous mispricing on every leg, which is rare.</div></details>
-<div class="notes"><h3>Method &amp; caveats</h3><ul><li><b>Disposal floor</b> &mdash; the projection minus a margin of safety (z<sub>conf</sub> &times; the player's recent std-dev), so erratic players are discounted more. Under a normal approximation they clear it in about 85% of games.</li><li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;65% under Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell is highlighted when the floor backs 1+ goal at 65%. <b>1+ rate</b> is a supporting figure &mdash; the separate empirical share of recent games with a goal.</li><li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; recent form is split across three windows (L3/L5/L10). With H2H: <span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>, without: <span class="chip">0.55&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.25&middot;L10</span>; H2H is recency-weighted (2026 counts 3&times; a 2024 meeting).</li><li>Players are sorted by disposal projection and <b>filtered to a disposal floor of at least 10</b> at 85% confidence. Floors use current-season games (recent games across seasons if too few).</li><li><b>Named teams</b> &mdash; once the official team is posted (usually Thursday night), the list is cut to the named 22 (emergencies excluded) and the card shows <span class="lineup named">named team</span>. Until then it shows <span class="lineup pending">team not yet named</span> and lists every current-season player. Source: the AFL API.</li><li><b>Sportsbet odds</b> &mdash; for imminent games we pull Sportsbet's <span class="chip">N+ disposals</span> ladder. <b>SB N+ $price</b> is the price at the floor; <b>model%</b> is our Normal(proj,&sigma;) chance of clearing it, <b>mkt%</b> the bookie's implied (1/price), and the last figure is the edge (model &times; price &minus; 1). The disposal cell is tinted <span style="color:var(--good);font-weight:700">green</span> when that edge is &ge;5% (clear value), <span style="color:var(--mid);font-weight:700">amber</span> when it is 0&ndash;5% (borderline), and left plain otherwise. A <span style="color:var(--good);font-weight:700">&#9650; better</span> line flags a different rung that prices up as stronger value than the floor. Implied% ignores the bookie's margin, so treat small edges with care.</li></ul></div>
+<details class="strategy"><summary>Betting strategy &mdash; singles vs multis</summary><div class="stratbody"><div class="caveat">A floor is "<b>clears at <span class="beConf">85</span>%</b>", not "wins your bet". It only pays if the bookie line sits <b>at or below</b> the floor, and legs in a same-game multi are <b>correlated</b> &mdash; that correlation only ever helps the book. Treat each leg as roughly a <span class="beConf">85</span>% shot and price accordingly.</div><p class="rules">For the best outcome over time:</p><ol><li><b>Look for singles where the odds are at least $<span id="beThresh">1.18</span></b> &mdash; that is the fair break-even price for a leg that clears <span class="beConf">85</span>% of the time. Anything shorter is &minus;EV.</li><li><b>Prioritise singles over multis.</b> At fair odds extra legs add only variance, never expected value; books also shade multi legs below the fair price.</li><li><b>If you must multi, fewer legs is better.</b> Each added leg multiplies the price you need just to break even and widens the swings.</li></ol><p class="rules">Odds you need at the chosen confidence (<span class="beConf">85</span>% per leg):</p><table class="be"><thead><tr><th>Legs</th><th>Win prob</th><th>Break-even odds</th><th>"Worth-it" target</th></tr></thead><tbody id="beBody"></tbody></table><div class="caveat"><b>Break-even</b> = (1/conf)<sup>legs</sup>; below it you lose long-run. <b>"Worth-it" target</b> bakes in a ~5% edge per leg (1.05/conf)<sup>legs</sup> to justify the added variance over singles &mdash; the gap widens fast, so big multis need generous mispricing on every leg, which is rare.</div></div></details>
+<details class="strategy"><summary>Method &amp; caveats</summary><div class="stratbody"><ul><li><b>Disposal floor</b> &mdash; the projection minus a margin of safety (z<sub>conf</sub> &times; the player's recent std-dev), so erratic players are discounted more. Under a normal approximation they clear it in about 85% of games.</li><li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;65% under Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell is highlighted when the floor backs 1+ goal at 65%. <b>1+ rate</b> is a supporting figure &mdash; the separate empirical share of recent games with a goal.</li><li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; recent form is split across three windows (L3/L5/L10). With H2H: <span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>, without: <span class="chip">0.55&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.25&middot;L10</span>; H2H is recency-weighted (2026 counts 3&times; a 2024 meeting).</li><li>Players are sorted by disposal projection and <b>filtered to a disposal floor of at least 10</b> at 85% confidence. Floors use current-season games (recent games across seasons if too few).</li><li><b>Named teams</b> &mdash; once the official team is posted (usually Thursday night), the list is cut to the named 22 (emergencies excluded) and the card shows <span class="lineup named">named team</span>. Until then it shows <span class="lineup pending">team not yet named</span> and lists every current-season player. Source: the AFL API.</li><li><b>Sportsbet odds</b> &mdash; for imminent games we pull Sportsbet's <span class="chip">N+ disposals</span> ladder. <b>SB N+ $price</b> is the price at the floor; <b>model%</b> is our Normal(proj,&sigma;) chance of clearing it, <b>mkt%</b> the bookie's implied (1/price), and the last figure is the edge (model &times; price &minus; 1). The disposal cell is tinted <span style="color:var(--good);font-weight:700">green</span> when that edge is &ge;5% (clear value), <span style="color:var(--mid);font-weight:700">amber</span> when it is 0&ndash;5% (borderline), and left plain otherwise. A <span style="color:var(--good);font-weight:700">&#9650; better</span> line flags a different rung that prices up as stronger value than the floor. Implied% ignores the bookie's margin, so treat small edges with care.</li></ul></div></details>
 <div class="legend"><span><b>min</b> disposal floor &mdash; projection minus the 85% margin of safety</span><span><b>k+ goals</b> goal floor &mdash; most goals backable at 65% confidence</span><span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span><span><b>1+ rate</b> supporting: share of recent games with a goal</span><span><b>proj</b> blended projection</span><span><b class="vlg clear">green</b> / <b class="vlg border">amber</b> disposal cell &mdash; clear / borderline betting value vs the Sportsbet price</span></div>
 <p class="sub">Confidence floors &middot; disposals <span id="subDisp">85</span>% &middot; goals 65% &middot; 2026 &middot; generated 2026-06-02 &middot; source: games_2022_2026.csv</p>
 </div><script>

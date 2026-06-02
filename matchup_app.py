@@ -407,10 +407,12 @@ header.top{position:sticky;top:0;z-index:10;
            background:rgba(255,255,255,.92);
            backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
            padding:14px 0 11px;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:9px;margin:0 0 11px}
-.logo{width:28px;height:28px;border-radius:8px;flex:none;
-      box-shadow:0 2px 8px rgba(12,47,107,.18)}
-h1{font-size:20px;margin:0;letter-spacing:-.015em;font-weight:750;color:var(--ink);line-height:1}
+.brand{display:flex;align-items:center;gap:11px;margin:0 0 11px}
+.logo{width:34px;height:34px;flex:none;display:block}
+/* two-tone Archivo wordmark, reused from the app-icon lockup */
+.wordmark{font-family:'Archivo',system-ui,sans-serif;font-weight:900;font-size:22px;
+          letter-spacing:-.6px;color:var(--ink);line-height:1;margin:0}
+.wordmark span{color:var(--disp)}
 select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
        border-radius:10px;padding:12px 12px;font-size:16px;-webkit-appearance:none;
        appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),
@@ -478,33 +480,35 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .stat.disp.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
 .stat.disp.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
 .na{color:var(--mut)}
-.notes{background:var(--inset);border:1px solid var(--line);border-radius:16px;padding:15px 17px;
-       color:var(--mut);font-size:12px;margin-top:16px}
-.notes h3{color:var(--ink);margin:0 0 8px;font-size:13px}
-.notes ul{margin:0;padding-left:18px}.notes li{margin:4px 0}
+/* collapsible reference panels (betting strategy + method): one shared type
+   scale — 12.5px/1.55 body, 13px heads, 20px list indent, 6px between items */
+.strategy{background:var(--inset);border:1px solid var(--line);border-radius:16px;margin-top:16px}
+.stratbody li{margin:6px 0}
+.stratbody b{color:var(--ink)}
 .chip{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10.5px;
       background:#fff;border:1px solid var(--line)}
-/* betting-strategy panel (collapsible) */
-.strategy{background:var(--inset);border:1px solid var(--line);border-radius:16px;margin-top:16px}
-.strategy>summary{cursor:pointer;padding:14px 17px;font-size:13px;font-weight:600;color:var(--ink);
+.strategy>summary{cursor:pointer;padding:16px 17px;font-size:13px;font-weight:700;color:var(--ink);
        list-style:none;display:flex;justify-content:space-between;align-items:center}
 .strategy>summary::-webkit-details-marker{display:none}
 .strategy>summary::after{content:'\\002b';color:var(--mut);font-weight:700;font-size:16px}
 .strategy[open]>summary::after{content:'\\2212'}
 .strategy>summary:hover{color:var(--disp)}
-.stratbody{padding:0 17px 16px;color:var(--mut);font-size:12.5px}
-.stratbody b{color:var(--ink)}
-.stratbody ol{margin:4px 0 14px;padding-left:20px}.stratbody li{margin:5px 0}
-table.be{width:100%;border-collapse:collapse;margin:4px 0 12px;font-variant-numeric:tabular-nums}
-table.be th,table.be td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);font-size:12px}
+.stratbody{padding:0 17px 16px;color:var(--mut);font-size:12.5px;line-height:1.55}
+.stratbody ul{margin:8px 0 0;padding-left:20px}
+.stratbody ol{margin:10px 0 14px;padding-left:20px}
+.stratbody p.rules{margin:14px 0 8px;color:var(--ink);font-weight:600}
+table.be{width:100%;border-collapse:collapse;margin:10px 0 14px;font-variant-numeric:tabular-nums}
+table.be th,table.be td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);font-size:12.5px}
 table.be th{color:var(--mut);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
 table.be td:first-child,table.be th:first-child{text-align:left}
 table.be tr:last-child td{border-bottom:none}
 table.be td.be-ok{color:var(--good)}
-.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:var(--mut)}
+.caveat{font-size:12.5px;line-height:1.55;margin:10px 0 0;color:var(--mut)}
+.stratbody>.caveat:first-child{margin-top:0}
 @media(min-width:780px){
   .wrap{padding:0 20px 60px}
-  h1{font-size:22px}
+  .logo{width:38px;height:38px}
+  .wordmark{font-size:25px}
   .games{grid-template-columns:1fr 1fr;align-items:start}
 }
 @media(max-width:340px){.stats{grid-template-columns:1fr}}
@@ -702,6 +706,36 @@ if (DATA.games.length) { sel.value = start; render(start); }
 """
 
 
+# Inline icon mark for the header lockup (football sailing through the goal posts).
+# Inverted for the site lockup: blue line-art on a transparent/white ground (no
+# square app-tile), so it sits cleanly next to the wordmark. Kept inline so the
+# mark + wordmark render as one unit without a second request.
+_HEADER_MARK = (
+    '<svg class="logo" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" '
+    'role="img" aria-label="Punters Mate">'
+    '<defs>'
+    '<linearGradient id="pmBall" x1="0" y1="0" x2="0.4" y2="1">'
+    '<stop offset="0%" stop-color="#3D8BFF"/><stop offset="100%" stop-color="#1A63DC"/></linearGradient>'
+    '</defs>'
+    # behind posts (fainter blue) then goal posts (solid blue)
+    '<line x1="328" y1="430" x2="328" y2="760" stroke="#1A63DC" stroke-width="24" stroke-linecap="round" opacity="0.30"/>'
+    '<line x1="696" y1="430" x2="696" y2="760" stroke="#1A63DC" stroke-width="24" stroke-linecap="round" opacity="0.30"/>'
+    '<line x1="426" y1="300" x2="426" y2="760" stroke="#1A63DC" stroke-width="30" stroke-linecap="round" opacity="0.85"/>'
+    '<line x1="598" y1="300" x2="598" y2="760" stroke="#1A63DC" stroke-width="30" stroke-linecap="round" opacity="0.85"/>'
+    # ball flight path
+    '<path d="M376 788 Q472 612 530 532" fill="none" stroke="#1A63DC" stroke-width="18" '
+    'stroke-linecap="round" stroke-dasharray="2 58" opacity="0.55"/>'
+    # the ball: solid blue with white seam + cross-laces
+    '<g transform="rotate(22 530 470)">'
+    '<ellipse cx="530" cy="470" rx="130" ry="186" fill="url(#pmBall)"/>'
+    '<line x1="530" y1="306" x2="530" y2="634" stroke="#fff" stroke-width="13" stroke-linecap="round"/>'
+    '<line x1="496" y1="400" x2="564" y2="400" stroke="#fff" stroke-width="10" stroke-linecap="round"/>'
+    '<line x1="496" y1="470" x2="564" y2="470" stroke="#fff" stroke-width="10" stroke-linecap="round"/>'
+    '<line x1="496" y1="540" x2="564" y2="540" stroke="#fff" stroke-width="10" stroke-linecap="round"/>'
+    '</g></svg>'
+)
+
+
 def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CONF):
     cpc = round(conf * 100)
     gpc = round(goal_conf * 100)
@@ -733,13 +767,14 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
     # Folded-in betting insight from the singles-vs-multi break-even analysis.
     strategy = (
         '<details class="strategy"><summary>Betting strategy &mdash; singles vs multis</summary>'
+        '<div class="stratbody">'
         '<div class="caveat">A floor is "<b>clears at <span class="beConf">85</span>%</b>", not '
         '"wins your bet". It only pays if the bookie line sits <b>at or below</b> the floor, and '
         'legs in a same-game multi are <b>correlated</b> &mdash; that correlation only ever helps '
         'the book. Treat each leg as roughly a <span class="beConf">85</span>% shot and price '
         'accordingly.</div>'
         '<p class="rules">For the best outcome over time:</p>'
-        '<ol class="rules">'
+        '<ol>'
         '<li><b>Look for singles where the odds are at least $<span id="beThresh">1.18</span></b> '
         '&mdash; that is the fair break-even price for a leg that clears '
         '<span class="beConf">85</span>% of the time. Anything shorter is &minus;EV.</li>'
@@ -757,7 +792,7 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         '<b>"Worth-it" target</b> bakes in a ~5% edge per leg (1.05/conf)<sup>legs</sup> to justify '
         'the added variance over singles &mdash; the gap widens fast, so big multis need generous '
         'mispricing on every leg, which is rare.</div>'
-        '</details>'
+        '</div></details>'
     )
 
     odds_note = ""
@@ -780,7 +815,8 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         skip_note = (f'<li><b>{len(skipped)}</b> fixtured game(s) hidden &mdash; no '
                      f'current-season data for: {names}.</li>')
     notes = (
-        '<div class="notes"><h3>Method &amp; caveats</h3><ul>'
+        '<details class="strategy"><summary>Method &amp; caveats</summary>'
+        '<div class="stratbody"><ul>'
         f'<li><b>Disposal floor</b> &mdash; the projection minus a margin of safety '
         '(z<sub>conf</sub> &times; the player\'s recent std-dev), so erratic players are '
         f'discounted more. Under a normal approximation they clear it in about {cpc}% of '
@@ -804,21 +840,24 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         'player. Source: the AFL API.</li>'
         f'{odds_note}'
         f'{skip_note}'
-        '</ul></div>'
+        '</ul></div></details>'
     )
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Punters Mate {M.CURRENT_SEASON}</title>
+<title>PuntersMate</title>
 <link rel="icon" type="image/svg+xml" href="{icons['svg']}">
 <link rel="apple-touch-icon" sizes="180x180" href="{icons['png180']}">
 <link rel="manifest" href="{icons['manifest']}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;900&display=swap" rel="stylesheet">
 <meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Punters Mate">
 <style>{_CSS}</style></head>
 <body><div class="wrap">
-<header class="top"><div class="brand"><img class="logo" src="{icons['svg']}" alt=""><h1>Punters Mate</h1></div>
+<header class="top"><div class="brand">{_HEADER_MARK}<h1 class="wordmark">Punters<span>Mate</span></h1></div>
 <select id="game" aria-label="Select match"></select>
 <p class="meta" id="meta"></p></header>
 <div class="games" id="out"></div>
