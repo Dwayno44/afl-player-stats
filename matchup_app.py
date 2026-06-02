@@ -407,7 +407,7 @@ header.top{position:sticky;top:0;z-index:10;
            background:rgba(255,255,255,.92);
            backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
            padding:14px 0 11px;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:11px;margin:0 0 11px}
+.brand{display:flex;align-items:center;gap:7px;margin:0 0 11px}
 .logo{width:34px;height:34px;flex:none;display:block}
 /* two-tone Archivo wordmark, reused from the app-icon lockup */
 .wordmark{font-family:'Archivo',system-ui,sans-serif;font-weight:900;font-size:22px;
@@ -420,12 +420,10 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
        background-position:calc(100% - 18px) 19px,calc(100% - 13px) 19px;
        background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 .meta{color:var(--mut);font-size:12.5px;margin:9px 2px 0}
-.sub{color:var(--mut);font-size:12px;margin:10px 2px 14px}
 .empty{color:var(--mut);font-size:12.5px;padding:14px;font-style:italic}
-/* legend now sits at the foot of the page as a reference panel */
-.legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;
-        background:var(--inset);border:1px solid var(--line);border-radius:14px;
-        padding:13px 15px;margin:16px 0 0}
+/* glossary key &mdash; lives inside the Method & caveats panel */
+.legend{color:var(--mut);font-size:12px;line-height:1.5;display:flex;gap:7px 16px;
+        flex-wrap:wrap;margin:8px 0 2px}
 .legend b{color:var(--ink)}
 .legend .vlg.clear{color:var(--good)}.legend .vlg.border{color:var(--mid)}
 .games{display:grid;gap:14px}
@@ -711,7 +709,7 @@ if (DATA.games.length) { sel.value = start; render(start); }
 # square app-tile), so it sits cleanly next to the wordmark. Kept inline so the
 # mark + wordmark render as one unit without a second request.
 _HEADER_MARK = (
-    '<svg class="logo" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" '
+    '<svg class="logo" viewBox="236 265 552 552" xmlns="http://www.w3.org/2000/svg" '
     'role="img" aria-label="Punters Mate">'
     '<defs>'
     '<linearGradient id="pmBall" x1="0" y1="0" x2="0.4" y2="1">'
@@ -753,15 +751,13 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         '<span><b class="vlg clear">green</b> / <b class="vlg border">amber</b> disposal cell '
         '&mdash; clear / borderline betting value vs the Sportsbet price</span>'
     ) if has_odds else ''
-    legend = (
-        '<div class="legend">'
+    legend_items = (
         f'<span><b>min</b> disposal floor &mdash; projection minus the {cpc}% margin of safety</span>'
         f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {gpc}% confidence</span>'
         '<span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span>'
         '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         '<span><b>proj</b> blended projection</span>'
         f'{value_legend}'
-        '</div>'
     )
 
     # Folded-in betting insight from the singles-vs-multi break-even analysis.
@@ -840,7 +836,13 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         'player. Source: the AFL API.</li>'
         f'{odds_note}'
         f'{skip_note}'
-        '</ul></div></details>'
+        '</ul>'
+        '<p class="rules">Key</p>'
+        f'<div class="legend">{legend_items}</div>'
+        '<div class="caveat">Confidence floors &middot; disposals '
+        f'<span id="subDisp">{cpc}</span>% &middot; goals {gpc}% &middot; {M.CURRENT_SEASON} '
+        f'&middot; generated {date.today()} &middot; source: {csv}</div>'
+        '</div></details>'
     )
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -863,9 +865,6 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 <div class="games" id="out"></div>
 {strategy}
 {notes}
-{legend}
-<p class="sub">Confidence floors &middot; disposals <span id="subDisp">{cpc}</span>% &middot; goals {gpc}% &middot; \
-{M.CURRENT_SEASON} &middot; generated {date.today()} &middot; source: {csv}</p>
 </div><script>{js}</script></body></html>"""
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
