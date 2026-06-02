@@ -4,3 +4,5 @@ beautifulsoup4>=4.12
 lxml>=4.9
 html5lib>=1.1
 pandas>=2.0
+numpy>=1.24
+pillow>=10.0
