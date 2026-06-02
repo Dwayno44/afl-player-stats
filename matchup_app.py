@@ -377,7 +377,8 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
                 print(f"  odds pull failed for {home} v {away}: {type(e).__name__}: {e}")
 
         games.append({
-            "round": g["round"], "date": g["date"], "venue": g["venue"],
+            "round": g["round"], "date": g["date"], "unixtime": g.get("unixtime"),
+            "venue": g["venue"],
             "home": home, "away": away,
             "home_named": home_named is not None,
             "away_named": away_named is not None,
@@ -539,18 +540,28 @@ DATA.games.forEach((g, i) => {
 
 const DASH = '\\u2013', DOT = ' \\u00b7 ';
 const HOT = 85;   // 1+ goal rate above this is flagged as "very likely"
-// "2026-06-04 19:30:00" -> "Thu 4 Jun, 7:30pm" (drop the seconds, read for a phone)
+// Render a game's kick-off in AWST (UTC+8, no daylight saving), e.g.
+// "Thu 4 Jun, 5:30pm AWST". Prefer the UTC epoch; fall back to the raw string.
 const _DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const _MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function fmtDate(s){
-  if(!s) return '';
-  const m = String(s).match(/(\\d{4})-(\\d{2})-(\\d{2})(?:[ T](\\d{2}):(\\d{2}))?/);
-  if(!m) return s;
-  const d = new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0));
-  let out = _DOW[d.getDay()] + ' ' + d.getDate() + ' ' + _MON[d.getMonth()];
-  if(m[4] !== undefined){
-    let h = +m[4]; const ap = h < 12 ? 'am' : 'pm'; h = h % 12 || 12;
-    out += ', ' + h + ':' + m[5] + ap;
+function fmtDate(g){
+  let Y, Mo, Da, Dow, H, Mi, hasTime = false;
+  if (g && g.unixtime){
+    // shift the UTC instant by +8h, then read the UTC fields = AWST wall clock
+    const d = new Date((g.unixtime + 8 * 3600) * 1000);
+    Y = d.getUTCFullYear(); Mo = d.getUTCMonth(); Da = d.getUTCDate();
+    Dow = d.getUTCDay(); H = d.getUTCHours(); Mi = d.getUTCMinutes(); hasTime = true;
+  } else {
+    const m = String((g && g.date) || '').match(/(\\d{4})-(\\d{2})-(\\d{2})(?:[ T](\\d{2}):(\\d{2}))?/);
+    if(!m) return (g && g.date) || '';
+    const d = new Date(+m[1], +m[2]-1, +m[3]);
+    Y = +m[1]; Mo = +m[2]-1; Da = +m[3]; Dow = d.getDay();
+    H = +(m[4]||0); Mi = +(m[5]||0); hasTime = (m[4] !== undefined);
+  }
+  let out = _DOW[Dow] + ' ' + Da + ' ' + _MON[Mo];
+  if (hasTime){
+    let h = H; const ap = h < 12 ? 'am' : 'pm'; h = h % 12 || 12;
+    out += ', ' + h + ':' + String(Mi).padStart(2,'0') + ap + (g && g.unixtime ? ' AWST' : '');
   }
   return out;
 }
@@ -653,7 +664,7 @@ function teamCard(side, team, opp, view, named){
 function render(i){
   curGame = i;
   const g = DATA.games[i];
-  meta.textContent = 'Round ' + g.round + DOT + fmtDate(g.date) + DOT + (g.venue || '');
+  meta.textContent = 'Round ' + g.round + DOT + fmtDate(g) + DOT + (g.venue || '');
   out.innerHTML =
     teamCard('home', g.home, g.away, g.home_view, g.home_named) +
     teamCard('away', g.away, g.home, g.away_view, g.away_named);

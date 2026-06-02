@@ -41,6 +41,7 @@ def get_fixtures(year: int, remaining_only: bool = True, verify: bool = True) ->
         out.append({
             "round": g.get("round"),
             "date": g.get("date"),
+            "unixtime": g.get("unixtime"),  # UTC epoch -> lets us show AWST on the page
             "venue": g.get("venue"),
             "home": g.get("hteam"),
             "away": g.get("ateam"),
