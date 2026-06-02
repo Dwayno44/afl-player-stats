@@ -390,29 +390,27 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
 # ── HTML shell (mobile-first; data injected as JSON, rendered in JS) ────────────
 
 _CSS = """
-/* Brand palette echoes the app icon: analogous blues, white ball, gold goal.
-   Cards are translucent "glass" floating over a fixed blue mesh gradient. */
-:root{--bg:#071a40;--card:rgba(16,44,102,.55);--inset:rgba(6,18,46,.55);
-      --line:rgba(255,255,255,.12);--ink:#eef3ff;--mut:#9fb2dd;
-      --disp:#4f9bff;--goal:#ffb23e;--home:#4f9bff;--away:#ff7a59;
-      --good:#46d39a;--mid:#e8b54a;--brand:#3D8BFF;}
+/* Light theme: white page, blue ink. Cards are white with a soft shadow;
+   accents echo the app icon (blue disposals, gold goals). */
+:root{--bg:#ffffff;--card:#ffffff;--inset:#f3f7fd;
+      --line:rgba(12,47,107,.14);--ink:#0c2f6b;--mut:#5b6f96;
+      --disp:#1a63dc;--goal:#bf820a;--home:#1a63dc;--away:#e0612f;
+      --good:#1a9e6a;--mid:#c0890f;--brand:#1551bf;}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;min-height:100vh;color:var(--ink);background:#050f2b;
-     background-image:radial-gradient(130% 95% at 25% -8%,#2f74ef 0%,#1551bf 28%,#0c357f 50%,#071f49 74%,#040d28 100%);
-     background-attachment:fixed;
+body{margin:0;min-height:100vh;color:var(--ink);background:#fff;
      font:15px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:0 12px 48px}
 /* sticky picker so you can switch games while scrolling on a phone */
 header.top{position:sticky;top:0;z-index:10;
-           background:linear-gradient(180deg,rgba(5,16,43,.92),rgba(5,16,43,.72));
+           background:rgba(255,255,255,.92);
            backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
            padding:12px 0 10px;border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;margin:0 0 9px}
 .logo{width:32px;height:32px;border-radius:9px;flex:none;
-      box-shadow:0 3px 10px rgba(4,18,60,.5)}
-h1{font-size:17px;margin:0;letter-spacing:.01em;font-weight:700}
-select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid var(--line);
+      box-shadow:0 2px 8px rgba(12,47,107,.18)}
+h1{font-size:17px;margin:0;letter-spacing:.01em;font-weight:700;color:var(--ink)}
+select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
        border-radius:10px;padding:12px 12px;font-size:16px;-webkit-appearance:none;
        appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),
        linear-gradient(135deg,var(--mut) 50%,transparent 50%);
@@ -421,26 +419,28 @@ select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid
 .meta{color:var(--mut);font-size:12.5px;margin:9px 2px 0}
 .sub{color:var(--mut);font-size:12px;margin:10px 2px 14px}
 .empty{color:var(--mut);font-size:12.5px;padding:14px;font-style:italic}
-.legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;margin:12px 2px 16px}
+/* legend now sits at the foot of the page as a reference panel */
+.legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;
+        background:var(--inset);border:1px solid var(--line);border-radius:14px;
+        padding:13px 15px;margin:16px 0 0}
 .legend b{color:var(--ink)}
 .legend .vlg.clear{color:var(--good)}.legend .vlg.border{color:var(--mid)}
 .games{display:grid;gap:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
-      backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-      box-shadow:0 8px 26px rgba(3,14,44,.35)}
-.card h2{margin:0;padding:12px 15px;font-size:15px;border-bottom:1px solid var(--line);
+      box-shadow:0 4px 16px rgba(12,47,107,.08)}
+.card h2{margin:0;padding:12px 15px;font-size:15px;border-bottom:1px solid var(--line);color:var(--ink);
          display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .card.home h2{border-left:4px solid var(--home)}
 .card.away h2{border-left:4px solid var(--away)}
 .card h2 small{color:var(--mut);font-weight:400;font-size:12px}
 .lineup{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
         padding:3px 7px;border-radius:99px;white-space:nowrap;align-self:center}
-.lineup.named{color:#7ee2a8;background:rgba(63,185,80,.13);border:1px solid rgba(63,185,80,.35)}
+.lineup.named{color:#0f7a4f;background:rgba(26,158,106,.12);border:1px solid rgba(26,158,106,.35)}
 .lineup.pending{color:var(--mut);background:var(--inset);border:1px solid var(--line)}
 .prow{padding:12px 14px;border-bottom:1px solid var(--line)}
 .prow:last-child{border-bottom:none}
 .phead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:9px}
-.pname{font-weight:600;font-size:15px}
+.pname{font-weight:600;font-size:15px;color:var(--ink)}
 .pname .rk{color:var(--mut);font-weight:600;font-size:12px;margin-right:7px}
 .pmeta{color:var(--mut);font-size:11.5px;white-space:nowrap}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -449,44 +449,42 @@ select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid
            font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
 .stat .big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15;
            margin:3px 0 2px}
-.stat.disp .big{color:#cfe0ff}.stat.goal .big{color:#ffe2b3}
+.stat.disp .big{color:var(--disp)}.stat.goal .big{color:var(--goal)}
 .stat .big .u{font-size:11px;font-weight:600;color:var(--mut);margin-left:3px}
 .proj{display:inline-block;font-size:11px;font-weight:600;color:var(--mut)}
-.bar{height:6px;border-radius:99px;background:rgba(255,255,255,.13);overflow:hidden;margin:7px 0 6px}
+.bar{height:6px;border-radius:99px;background:rgba(12,47,107,.1);overflow:hidden;margin:7px 0 6px}
 .bar>span{display:block;height:100%;border-radius:99px}
 .stat.disp .bar>span{background:var(--disp)}.stat.goal .bar>span{background:var(--goal)}
 .det{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
-/* Sportsbet disposal odds: price at the dial-driven floor + best value lean */
+/* Sportsbet disposal odds: price at the floor + best value lean */
 .sbline{margin-top:7px;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;
         display:flex;justify-content:space-between;align-items:center;gap:8px}
-.sbline .sbtag{font-weight:700;color:#cfe0ff}
+.sbline .sbtag{font-weight:700;color:var(--disp)}
 .sbline.ev,.sbline.ev .sbtag{color:var(--good)}
 .sbval{margin-top:7px;font-size:11px;font-weight:700;color:var(--good);
-       background:rgba(70,211,154,.14);border:1px solid rgba(70,211,154,.42);
+       background:rgba(26,158,106,.1);border:1px solid rgba(26,158,106,.4);
        border-radius:9px;padding:6px 9px;display:flex;justify-content:space-between;
        align-items:center;gap:8px;font-variant-numeric:tabular-nums}
-.sbnone{margin-top:7px;font-size:10.5px;color:#6b7aa6}
+.sbnone{margin-top:7px;font-size:10.5px;color:var(--mut)}
 .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;
        letter-spacing:.02em}
-.badge.yes{background:rgba(63,185,80,.16);color:var(--good);border:1px solid rgba(63,185,80,.4)}
+.badge.yes{background:rgba(26,158,106,.14);color:var(--good);border:1px solid rgba(26,158,106,.4)}
 .pct.hi{color:var(--good)}.pct.mid{color:var(--mid)}.pct.lo{color:var(--mut)}
 .pct.elite{color:var(--good);font-weight:800}
 /* goal floor backs 1+ goals at the confidence level — flag the whole goal cell */
-.stat.goal.hot{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
+.stat.goal.hot{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
 /* disposal cell tinted by betting value at the floor: clear (green) / borderline (amber) */
-.stat.disp.val-clear{border-color:rgba(70,211,154,.55);background:rgba(70,211,154,.09)}
-.stat.disp.val-border{border-color:rgba(232,181,74,.5);background:rgba(232,181,74,.09)}
-.na{color:#6b7aa6}
-.notes{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 17px;
-       color:var(--mut);font-size:12px;margin-top:16px;
-       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.stat.disp.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
+.stat.disp.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
+.na{color:var(--mut)}
+.notes{background:var(--inset);border:1px solid var(--line);border-radius:16px;padding:15px 17px;
+       color:var(--mut);font-size:12px;margin-top:16px}
 .notes h3{color:var(--ink);margin:0 0 8px;font-size:13px}
 .notes ul{margin:0;padding-left:18px}.notes li{margin:4px 0}
 .chip{display:inline-block;padding:1px 6px;border-radius:99px;font-size:10.5px;
-      background:var(--inset);border:1px solid var(--line)}
+      background:#fff;border:1px solid var(--line)}
 /* betting-strategy panel (collapsible) */
-.strategy{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:16px;
-       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.strategy{background:var(--inset);border:1px solid var(--line);border-radius:16px;margin-top:16px}
 .strategy>summary{cursor:pointer;padding:14px 17px;font-size:13px;font-weight:600;color:var(--ink);
        list-style:none;display:flex;justify-content:space-between;align-items:center}
 .strategy>summary::-webkit-details-marker{display:none}
@@ -502,7 +500,7 @@ table.be th{color:var(--mut);font-weight:600;font-size:10.5px;text-transform:upp
 table.be td:first-child,table.be th:first-child{text-align:left}
 table.be tr:last-child td{border-bottom:none}
 table.be td.be-ok{color:var(--good)}
-.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:#8092bd}
+.caveat{font-size:11px;line-height:1.5;margin:8px 0 0;color:var(--mut)}
 @media(min-width:780px){
   .wrap{padding:0 20px 60px}
   h1{font-size:22px}
@@ -788,9 +786,9 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 <link rel="icon" type="image/svg+xml" href="{icons['svg']}">
 <link rel="apple-touch-icon" sizes="180x180" href="{icons['png180']}">
 <link rel="manifest" href="{icons['manifest']}">
-<meta name="theme-color" content="#082E86">
+<meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Punters Mate">
 <style>{_CSS}</style></head>
 <body><div class="wrap">
@@ -799,10 +797,10 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 <p class="meta" id="meta"></p></header>
 <p class="sub">Confidence floors &middot; disposals <span id="subDisp">{cpc}</span>% &middot; goals {gpc}% &middot; \
 {M.CURRENT_SEASON} &middot; generated {date.today()} &middot; source: {csv}</p>
-{legend}
 <div class="games" id="out"></div>
 {strategy}
 {notes}
+{legend}
 </div><script>{js}</script></body></html>"""
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
