@@ -10,9 +10,10 @@ corporate network). Written 2026-06-02.
 **Punters Mate** — an AFL footy-betting helper for backing player **disposals**
 and **goals**. It builds a single static page (`docs/index.html`) that, per
 fixtured match, lists each named player with a **disposal floor** and a **goal
-floor** at a chosen confidence, plus a betting-strategy panel (singles vs multis,
-break-even odds). All the maths runs client-side so the confidence "dial" updates
-the page live.
+floor** at a fixed confidence, plus a betting-strategy panel (singles vs multis,
+break-even odds). For imminent games it pulls the Sportsbet "N+ disposals" ladder
+and tints each disposal cell green/amber by how much betting value it carries
+against the bookie price. All the maths runs client-side.
 
 - **Live site:** GitHub Pages from `main` → `/docs`
   → https://dwayno44.github.io/afl-player-stats/
@@ -68,62 +69,35 @@ numpy/pillow) and this `HANDOVER.md`. Commit them on the new machine if not alre
 
 ---
 
-## 4. THE NEXT TASK — player disposal odds (this is why we're moving machines)
+## 4. Player disposal odds — DONE (via Sportsbet direct, no API key)
 
-**Goal:** pull live AFL player **disposal** odds (Sportsbet) so we can compare a
-bookie's over/under line against our computed disposal floor and flag +EV bets.
+**Goal (achieved):** compare a bookie's disposal milestones against our computed
+disposal floor and flag value bets on the page.
 
-**Why it stalled on the work machine:** Fortescue's **Netskope** proxy blocks
-`api.the-odds-api.com` under category *"Prohibited Sites, Gambling"* — the request
-returns a 403 block page and never reaches the API. Nothing to do with the key or
-endpoint; it's a network policy. **It must run off the corporate network.** That's
-the whole reason for the move.
+**How it works now.** `sportsbet_odds.py` pulls Sportsbet's Same Game Multi
+**"N+ Disposals" ladder** straight from their internal JSON API via `cloudscraper`
+(same Akamai/Cloudflare trick as `afltables.py`). **No key, no quota, no account** —
+the ladder prices every integer milestone (10+, 11+, … 40+) per player, which is
+exactly what our floor model wants. Endpoint:
+`GET https://www.sportsbet.com.au/apigw/sportsbook-sports/Sportsbook/Sports/Events/{eventId}`
+→ `marketList[]`; the disposal markets are the ones named `"<N>+ Disposals"`, each
+with `selections[]` of `{name: player, price: {winPrice: decimal}}`.
 
-### The Odds API specifics (validated against their v4 docs, not yet run live)
+**The value calc.** Each disposal milestone *N* has an implied prob `1/winPrice`;
+our model gives `P(disposals ≥ N)` from `Normal(D_proj, D_sigma)`; edge =
+`model_P × price − 1`. The page tints a player's disposal cell **green** when the
+edge at their floor is ≥5%, **amber** at 0–5%, and leaves it plain otherwise. Name
+joins reuse `lineups.py`'s normaliser (Sportsbet "Given Surname" → CSV
+"Surname, Given"; club names via `SB2CSV`).
 
-- **Base:** `https://api.the-odds-api.com/v4`
-- **Sport key:** `aussierules_afl`
-- **API key (free tier, ~500 req/month):** `09f3f2c77702fe876bc6ea6cb33fb7b7`
-  - ⚠️ This key is exposed in this repo/handover and in work-machine shell history.
-    **Rotate it** at the-odds-api.com when you get on the new machine, and keep the
-    new one out of git (env var or untracked file — see below).
-- **Flow:**
-  1. `GET /v4/sports/aussierules_afl/events?apiKey=…`
-     → list events, grab an `id`. *(free — no quota cost)*
-  2. `GET /v4/sports/aussierules_afl/events/{eventId}/odds`
-     with params: `apiKey`, `regions=au`, `markets=player_disposals`,
-     `bookmakers=sportsbet`, `oddsFormat=decimal`.
-- **Market keys to try:** `player_disposals`, and the alternate-lines variant
-  `player_disposals_alternate`. (Other AFL props exist: `player_goals`,
-  `player_marks`, `player_tackles`, etc.)
-- **Response shape:** `bookmakers[] → markets[] → outcomes[]`, where each outcome
-  has `description` (player name), `name` ("Over"/"Under"), `point` (the line),
-  `price` (decimal odds).
-- **Quota headers** on each response: `x-requests-remaining`, `x-requests-used`.
-  Watch these — the per-event odds call costs 1 (or more) per market×region.
-- **Timing:** player props usually only populate a day or two before each game.
-  Empty markets ≠ broken — just no lines posted yet.
+**Opt-in & geo-locked.** Sportsbet geo-restricts to AU, so the odds path is opt-in
+(`matchup_app.py --odds`) and the weekly CI rebuild (US runner) just builds the page
+without odds — the default build is unaffected.
 
-### Suggested first step on the new machine
-
-Write a standalone `odds.py` (kept out of the CI build) that:
-1. reads the key from `ODDS_API_KEY` env var (not hard-coded),
-2. lists AFL events, takes `--event <id>` or defaults to the soonest,
-3. pulls `player_disposals` (+ `_alternate`) from Sportsbet in decimal,
-4. prints each player's line + over/under prices, and the quota used.
-
-Add `odds.py` secrets handling to `.gitignore` if you cache responses. Don't commit
-the key.
-
-### Then: the actual value — match odds to our floors
-
-Our page already computes a **disposal floor** = "clears at *conf*% of the time"
-(`floor = projection − z(conf)·σ`, see `matchup.py` / `matchup_app.py`). The bet is
-+EV when a bookie's **Over** line sits **at or below** our floor at fair-or-better
-odds. The break-even maths is already in the page's strategy panel
-(fair per-leg odds = 1/conf). So the integration is: join Odds-API player lines to
-our per-player floors (same name-normalisation approach as `lineups.py` uses for the
-AFL API → CSV join) and highlight where `bookie_line ≤ floor` and `price ≥ 1/conf`.
+> **The Odds API was abandoned.** The earlier plan used the-odds-api.com, but for
+> AFL it only exposes two discrete disposal points per player (no milestone ladder),
+> so it can't drive this feature. That dependency, its `odds.py` helper, and its API
+> key have all been removed. No third-party key is used anywhere in the project.
 
 ---
 
@@ -131,7 +105,8 @@ AFL API → CSV join) and highlight where `bookie_line ≤ floor` and `price ≥
 
 | File | Role |
 |------|------|
-| `matchup_app.py` | **Main renderer.** Builds `docs/index.html`: embeds data as JSON, ships the CSS/JS, renders the icon set (`write_icons`), the confidence dial, strategy panel. Entry point `main()`. |
+| `matchup_app.py` | **Main renderer.** Builds `docs/index.html`: embeds data as JSON, ships the CSS/JS, renders the icon set (`write_icons`), the value-tinted player cards, strategy panel. `--odds` attaches Sportsbet odds. Entry point `main()`. |
+| `sportsbet_odds.py` | Fetches the Sportsbet "N+ disposals" ladder (cloudscraper, no key), name-joins to CSV players, computes per-rung value vs the model. CLI: `events`, `ladder`. |
 | `matchup.py` | Stats engine: per-team player view, projections (season + L3/L5/L10 + H2H blend), disposal σ, goal floor (Poisson). |
 | `lineups.py` | Pulls the officially **named 22** from the AFL API (token → compseason → matches → roster) and joins to CSV names. Degrades gracefully if not yet named. |
 | `fixtures.py` | Fixture/venue pull from the Squiggle API. |
@@ -156,7 +131,8 @@ AFL API → CSV join) and highlight where `bookie_line ≤ floor` and `price ≥
 - **Lineups:** official AFL API (Champion Data backed). Token via
   `POST api.afl.com.au/cfs/afl/WMCTok`, passed as `x-media-mis-token` header.
   2026 men's compSeason id = 85.
-- **Odds (NEW, pending):** The Odds API — see §4.
+- **Odds:** Sportsbet internal JSON API via `cloudscraper` — no key, no quota, AU IP
+  only. See §4.
 
 ---
 
@@ -172,8 +148,9 @@ AFL API → CSV join) and highlight where `bookie_line ≤ floor` and `price ≥
   change in an auto-run — but if you tweak the icon, commit those manually (as we
   did) or widen the `git add` list.
 - **CRLF warning on commit** (Windows): harmless — git normalising line endings.
-- **The "mad cunt" dial:** 4 steps map to disposal confidence `[90, 85, 80, 75]`
-  (`CONF_STEPS` in the page JS). Goals stay fixed at 65% regardless of the dial.
+- **Confidence is fixed** at `DEFAULT_CONF` (85%) for disposals, 65% for goals — the
+  old "mad cunt" slider was removed in favour of green/amber value tinting on each
+  disposal cell. The page reads the level from the embedded `DATA.conf`.
 - **Corporate-net flags:** any `--insecure` / `verify=False` you see is only for the
   Fortescue proxy. Not needed (and less safe) on a personal machine.
 
@@ -183,7 +160,8 @@ AFL API → CSV join) and highlight where `bookie_line ≤ floor` and `price ≥
 
 - Commit trailer used this project: `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>`
 - New commits, not amends. Deploy is GitHub Pages from `main` `/docs`.
-- Keep the API key (and any future secrets) out of git.
+- No third-party API keys are used. Keep any future secrets out of git (env var or
+  untracked file), never hard-coded or in this doc.
 
 ---
 
@@ -191,7 +169,5 @@ AFL API → CSV join) and highlight where `bookie_line ≤ floor` and `price ≥
 
 - [ ] Clone repo, set up venv, `pip install -r requirements.txt`, run `test_parser.py`.
 - [ ] `python matchup_app.py --out docs/index.html` (no `--insecure`) — confirm it builds and looks right in a browser.
-- [ ] **Rotate** the Odds API key; put the new one in an `ODDS_API_KEY` env var.
-- [ ] Live-test The Odds API (now unblocked): list AFL events → pull `player_disposals` for one event from Sportsbet. Confirm market exists and inspect the shape.
-- [ ] Write `odds.py` per §4; then wire odds-vs-floor comparison into the page.
-- [ ] Commit `requirements.txt` + `HANDOVER.md` if they weren't already.
+- [ ] For value flags, build with odds (AU IP only): `python matchup_app.py --odds --out docs/index.html`. Spot-check `sportsbet_odds.py events` if no markets attach.
+- [ ] Commit any uncommitted `requirements.txt` / `HANDOVER.md`.

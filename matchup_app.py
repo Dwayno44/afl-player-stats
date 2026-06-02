@@ -20,6 +20,7 @@ import pandas as pd
 import matchup as M
 import fixtures as F
 import lineups as L
+import sportsbet_odds as SB
 
 ICON_SVG = "punters-mate-icon.svg"      # vector favicon / logo (shipped as-is)
 APPLE_ICON = "apple-touch-icon.png"     # iOS home screen (180)
@@ -266,10 +267,35 @@ def _view_to_records(view: pd.DataFrame) -> list[dict]:
 
 
 LINEUP_WINDOW_DAYS = 9  # only chase named teams for games kicking off this soon
+ODDS_WINDOW_DAYS = 9    # only pull Sportsbet disposal odds for games this soon
+ODDS_MIN_EDGE = 0.05    # surface a value pick only when the model edge clears this
+
+
+def _attach_odds(records: list[dict], ladder: dict, conf: float) -> int:
+    """Join a game's Sportsbet disposal ladder onto its player records (in place).
+
+    Adds per matched player: `od_ladder` ({N: price}) so the page can show the
+    bookie price at the dial-driven floor, and `od_best` (the best value lean, or
+    None) computed against the model's Normal(proj, sigma). EV is independent of
+    the confidence dial, so it's settled here at build time. Returns the count of
+    players matched to a ladder."""
+    by_csv = {csv: sb for sb, csv in
+              SB.match_players(list(ladder), [r["player"] for r in records]).items()}
+    matched = 0
+    for r in records:
+        sb = by_csv.get(r["player"])
+        if not sb:
+            continue
+        rung = ladder[sb]
+        r["od_ladder"] = {str(n): p for n, p in sorted(rung.items())}
+        r["od_best"] = SB.best_value(rung, r.get("D_proj"), r.get("D_sigma"),
+                                     min_edge=ODDS_MIN_EDGE)
+        matched += 1
+    return matched
 
 
 def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEASON,
-                conf: float = M.DEFAULT_CONF, verify: bool = True):
+                conf: float = M.DEFAULT_CONF, verify: bool = True, odds: bool = False):
     """For each fixture game where both clubs have current-season data, attach
     precomputed home/away projection views. Every current-season player is
     included (sorted by disposal projection); the page filters by floor in-browser
@@ -282,6 +308,18 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
     Returns (games, skipped)."""
     have = set(df[df.season == year]["team"].unique())
     today = date.today()
+
+    # Sportsbet odds (opt-in). One scraper + one events list for the whole build;
+    # any network/bot-block failure degrades to "no odds" without killing the page.
+    odds_scraper = sb_events = None
+    if odds:
+        try:
+            odds_scraper = SB.make_scraper()
+            sb_events = SB.list_events(odds_scraper)
+            print(f"  Sportsbet: {len(sb_events)} AFL events for odds matching")
+        except Exception as e:
+            print(f"  Sportsbet events pull failed ({type(e).__name__}: {e}); building without odds")
+            odds = False
 
     lineup_cache: dict = {}
 
@@ -319,13 +357,32 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
         if away_named is not None:
             va = va[va["player"].isin(away_named)]
 
+        home_rec = _view_to_records(vh)
+        away_rec = _view_to_records(va)
+
+        # Disposal odds: only for imminent games (props post a day or two out) and
+        # only when --odds is on. Per-game failures are non-fatal.
+        if odds and within and sb_events is not None:
+            try:
+                ev = SB.find_event(home, away, g["date"], sb_events)
+                if ev:
+                    ladder = SB.disposal_ladder(ev["id"], odds_scraper)
+                    if ladder:
+                        mh = _attach_odds(home_rec, ladder, conf)
+                        ma = _attach_odds(away_rec, ladder, conf)
+                        print(f"  odds: {home} v {away} -> {mh}+{ma} players priced")
+                    else:
+                        print(f"  odds: {home} v {away} -> no disposal markets yet")
+            except Exception as e:
+                print(f"  odds pull failed for {home} v {away}: {type(e).__name__}: {e}")
+
         games.append({
             "round": g["round"], "date": g["date"], "venue": g["venue"],
             "home": home, "away": away,
             "home_named": home_named is not None,
             "away_named": away_named is not None,
-            "home_view": _view_to_records(vh),
-            "away_view": _view_to_records(va),
+            "home_view": home_rec,
+            "away_view": away_rec,
         })
     return games, skipped
 
@@ -362,35 +419,11 @@ select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid
        background-position:calc(100% - 18px) 19px,calc(100% - 13px) 19px;
        background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 .meta{color:var(--mut);font-size:12.5px;margin:9px 2px 0}
-.dial{margin-top:12px}
-.dial label{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
-            color:var(--mut);margin:0 2px 10px}
-/* the dial itself: a slider knob riding a green->amber->red risk track */
-#madcunt{-webkit-appearance:none;appearance:none;width:100%;height:26px;
-         background:transparent;cursor:pointer;margin:0}
-#madcunt::-webkit-slider-runnable-track{height:8px;border-radius:999px;
-  background:linear-gradient(90deg,var(--good),var(--goal) 55%,var(--away))}
-#madcunt::-moz-range-track{height:8px;border-radius:999px;
-  background:linear-gradient(90deg,var(--good),var(--goal) 55%,var(--away))}
-#madcunt::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;
-  margin-top:-10px;border-radius:50%;border:2px solid #fff;
-  background:radial-gradient(circle at 35% 30%,#fff,#cdd8f0);
-  box-shadow:0 3px 10px rgba(4,18,60,.6)}
-#madcunt::-moz-range-thumb{width:24px;height:24px;border-radius:50%;border:2px solid #fff;
-  background:radial-gradient(circle at 35% 30%,#fff,#cdd8f0);
-  box-shadow:0 3px 10px rgba(4,18,60,.6)}
-#madcunt:focus-visible{outline:none}
-#madcunt:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px rgba(61,139,255,.45)}
-.dial-ticks{display:flex;justify-content:space-between;gap:4px;margin:9px 1px 0}
-.dial-ticks span{flex:1;text-align:center;font-size:10.5px;line-height:1.25;color:var(--mut);
-  transition:color .15s ease}
-.dial-ticks span:first-child{text-align:left}
-.dial-ticks span:last-child{text-align:right}
-.dial-ticks span.on{color:var(--ink);font-weight:700}
 .sub{color:var(--mut);font-size:12px;margin:10px 2px 14px}
 .empty{color:var(--mut);font-size:12.5px;padding:14px;font-style:italic}
 .legend{color:var(--mut);font-size:11.5px;display:flex;gap:6px 14px;flex-wrap:wrap;margin:12px 2px 16px}
 .legend b{color:var(--ink)}
+.legend .vlg.clear{color:var(--good)}.legend .vlg.border{color:var(--mid)}
 .games{display:grid;gap:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
@@ -423,6 +456,16 @@ select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid
 .bar>span{display:block;height:100%;border-radius:99px}
 .stat.disp .bar>span{background:var(--disp)}.stat.goal .bar>span{background:var(--goal)}
 .det{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+/* Sportsbet disposal odds: price at the dial-driven floor + best value lean */
+.sbline{margin-top:7px;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;
+        display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sbline .sbtag{font-weight:700;color:#cfe0ff}
+.sbline.ev,.sbline.ev .sbtag{color:var(--good)}
+.sbval{margin-top:7px;font-size:11px;font-weight:700;color:var(--good);
+       background:rgba(70,211,154,.14);border:1px solid rgba(70,211,154,.42);
+       border-radius:9px;padding:6px 9px;display:flex;justify-content:space-between;
+       align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.sbnone{margin-top:7px;font-size:10.5px;color:#6b7aa6}
 .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;
        letter-spacing:.02em}
 .badge.yes{background:rgba(63,185,80,.16);color:var(--good);border:1px solid rgba(63,185,80,.4)}
@@ -430,6 +473,9 @@ select{width:100%;background:rgba(8,24,58,.72);color:var(--ink);border:1px solid
 .pct.elite{color:var(--good);font-weight:800}
 /* goal floor backs 1+ goals at the confidence level — flag the whole goal cell */
 .stat.goal.hot{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
+/* disposal cell tinted by betting value at the floor: clear (green) / borderline (amber) */
+.stat.disp.val-clear{border-color:rgba(70,211,154,.55);background:rgba(70,211,154,.09)}
+.stat.disp.val-border{border-color:rgba(232,181,74,.5);background:rgba(232,181,74,.09)}
 .na{color:#6b7aa6}
 .notes{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 17px;
        color:var(--mut);font-size:12px;margin-top:16px;
@@ -467,19 +513,16 @@ table.be td.be-ok{color:var(--good)}
 
 _JS = """
 const DATA = __DATA__;
-const GCONF = Math.round(DATA.goal_conf * 100);   // goals: fixed (server-side)
-// One-sided normal quantiles for the four "mad cunt" disposal confidence levels.
+const GCONF = Math.round(DATA.goal_conf * 100);   // goals confidence (server-side)
+// One-sided normal quantile for the disposal floor: floor = proj - z(conf)*sigma.
 const Z = {90:1.2816, 85:1.0364, 80:0.8416, 75:0.6745};
 const FLOOR_MIN = 10;          // only show players whose disposal floor clears this
 const sel = document.getElementById('game');
-const madcunt = document.getElementById('madcunt');
 const out = document.getElementById('out');
 const meta = document.getElementById('meta');
-const CONF_STEPS = [90, 85, 80, 75];   // dial index -> disposal confidence
-const DIAL_LABELS = ['Barely a mad cunt', 'A bit of a mad cunt',
-                     'A proper mad cunt', 'A real loose cunt'];
-const dialTicks = document.querySelectorAll('.dial-ticks span');
-let curConf = CONF_STEPS[parseInt(madcunt.value, 10)] || 85;   // disposal confidence (live)
+const curConf = Math.round(DATA.conf * 100);   // disposal-floor confidence (fixed)
+const ZCONF = Z[curConf] || Z[85];
+const VAL_CLEAR = 0.05;        // model edge over the bookie price that counts as "clear" value
 let curGame = 0;
 
 let curRound = null, og = null;
@@ -502,24 +545,57 @@ function f1(v){ return v === null ? DASH : v.toFixed(1); }
 function f0(v){ return v === null ? DASH : Math.round(v).toString(); }
 function pctCls(p){ return p > HOT ? 'elite' : (p >= GCONF ? 'hi' : (p >= 50 ? 'mid' : 'lo')); }
 
-// Disposal floor rebuilt client-side at the chosen confidence: proj - z*sigma,
-// rounded down, never below 0. <3 recent games (sigma null) -> flat 15% haircut.
-function dispFloor(r, conf){
+// Standard normal CDF (Abramowitz & Stegun 7.1.26) so the page can put the
+// model's probability on the Sportsbet price at whatever floor the dial picks.
+function normCdf(z){
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp(-z * z / 2);
+  const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 +
+            t * (-1.821255978 + t * 1.330274429))));
+  return z > 0 ? 1 - p : p;
+}
+// Disposal floor at the fixed confidence: proj - z*sigma, rounded down, never
+// below 0. <3 recent games (sigma null) -> flat 15% haircut.
+function dispFloor(r){
   if (r.D_proj === null || r.D_proj === undefined) return null;
   if (r.D_sigma === null) return Math.max(0, Math.floor(r.D_proj * 0.85));
-  return Math.max(0, Math.floor(r.D_proj - Z[conf] * r.D_sigma));
+  return Math.max(0, Math.floor(r.D_proj - ZCONF * r.D_sigma));
 }
 
 function dispStat(r, o3, dmax){
-  const floor = dispFloor(r, curConf);
+  const floor = dispFloor(r);
+  // Sportsbet block + value tint: price the displayed floor against the model and
+  // tint the cell green (clear value) / amber (borderline) / none. The floor sits
+  // at ~conf% by construction, so it's always inside a backable probability band.
+  let valCls = '', odds = '';
+  if (r.od_ladder){
+    const price = r.od_ladder[String(floor)];
+    if (price !== undefined && r.D_sigma){
+      const mp = normCdf((r.D_proj - floor) / r.D_sigma);
+      const ev = mp * price - 1;
+      valCls = ev >= VAL_CLEAR ? ' val-clear' : (ev >= 0 ? ' val-border' : '');
+      odds += '<div class="sbline' + (ev > 0 ? ' ev' : '') + '">'+
+        '<span class="sbtag">SB ' + floor + '+ $' + price.toFixed(2) + '</span>'+
+        '<span>model ' + Math.round(mp * 100) + '% ' + DOT + 'mkt ' + Math.round(100 / price) + '%' +
+        DOT + (ev >= 0 ? '+' : '') + Math.round(ev * 100) + '%</span></div>';
+    } else if (price === undefined){
+      odds += '<div class="sbnone">no Sportsbet line at ' + floor + '+ disposals</div>';
+    }
+    // a different rung that prices up as clearer value than the floor itself
+    if (r.od_best && r.od_best.n !== floor){
+      const b = r.od_best;
+      odds += '<div class="sbval"><span>\\u25b2 better: back ' + b.n + '+ @ $' + b.price.toFixed(2) +
+        '</span><span>+' + Math.round(b.edge * 100) + '% edge</span></div>';
+    }
+  }
   const w = (r.D_proj && dmax) ? Math.max(4, Math.min(100, r.D_proj / dmax * 100)) : 0;
   const det = 'proj ' + f1(r.D_proj) + DOT + 'avg ' + f1(r.D_avg) + DOT +
               'L5 ' + f1(r.D_L5) + DOT + 'v' + o3 + ' ' + f1(r.D_vs) + ' (' + r.D_n + ')';
-  return '<div class="stat disp"><div class="lbl"><span>Disposals</span>'+
+  return '<div class="stat disp' + valCls + '"><div class="lbl"><span>Disposals</span>'+
     '<span>' + curConf + '% conf</span></div>'+
     '<div class="big">' + f0(floor) + '<span class="u">min</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
-    '<div class="det">' + det + '</div></div>';
+    '<div class="det">' + det + '</div>' + odds + '</div>';
 }
 function goalStat(r, o3, gmax){
   const floor = r.G_floor;              // hero: conf% goal floor (k+)
@@ -546,7 +622,7 @@ function teamCard(side, team, opp, view, named){
   const head = '<h2>' + team + ' <small>vs ' + opp + '</small>' + tag + '</h2>';
   // Filter to players whose disposal floor clears FLOOR_MIN at the chosen
   // confidence; the cut moves with the toggle (looser conf -> higher floors).
-  const shown = view.filter(r => { const f = dispFloor(r, curConf); return f !== null && f >= FLOOR_MIN; });
+  const shown = view.filter(r => { const f = dispFloor(r); return f !== null && f >= FLOOR_MIN; });
   if (!shown.length)
     return '<div class="card ' + side + '">' + head +
       '<div class="empty">No players clear a ' + FLOOR_MIN + '-disposal floor at ' + curConf + '% confidence.</div></div>';
@@ -593,16 +669,7 @@ function renderStrategy(conf){
 }
 
 sel.addEventListener('change', e => render(+e.target.value));
-function setDial(i){
-  curConf = CONF_STEPS[i];
-  madcunt.setAttribute('aria-valuetext', DIAL_LABELS[i]);
-  dialTicks.forEach((s, idx) => s.classList.toggle('on', idx === i));
-  renderStrategy(curConf);
-  if (DATA.games.length) render(curGame);
-}
-madcunt.addEventListener('input', e => setDial(parseInt(e.target.value, 10)));
-
-setDial(parseInt(madcunt.value, 10));
+renderStrategy(curConf);
 // Default to the next game that hasn't started yet (fall back to the first).
 const now = new Date();
 let start = DATA.games.findIndex(g => g.date && new Date(g.date.replace(' ', 'T')) >= now);
@@ -620,28 +687,22 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
     js = _JS.replace("__DATA__", payload)
     icons = write_icons(path)
 
-    # "How much of a mad cunt do you want to be?" dial -- a real slider knob that
-    # toggles disposal confidence. Steps map to 90/85/80/75 (see CONF_STEPS in JS).
-    dial = (
-        '<div class="dial"><label id="madcunt-label" for="madcunt">'
-        'how much of a mad cunt do you want to be?</label>'
-        '<input type="range" id="madcunt" min="0" max="3" step="1" value="1" '
-        'aria-labelledby="madcunt-label" aria-valuetext="A bit of a mad cunt">'
-        '<div class="dial-ticks">'
-        '<span>Barely a mad cunt</span>'
-        '<span>A bit of a mad cunt</span>'
-        '<span>A proper mad cunt</span>'
-        '<span>A real loose cunt</span>'
-        '</div></div>'
-    )
+    has_odds = any("od_ladder" in r for g in games
+                   for r in g["home_view"] + g["away_view"])
 
+    # When odds are present, explain the green/amber tint that replaced the old dial.
+    value_legend = (
+        '<span><b class="vlg clear">green</b> / <b class="vlg border">amber</b> disposal cell '
+        '&mdash; clear / borderline betting value vs the Sportsbet price</span>'
+    ) if has_odds else ''
     legend = (
         '<div class="legend">'
-        '<span><b>min</b> disposal floor &mdash; projection minus your chosen margin of safety</span>'
+        f'<span><b>min</b> disposal floor &mdash; projection minus the {cpc}% margin of safety</span>'
         f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {gpc}% confidence</span>'
         '<span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span>'
         '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         '<span><b>proj</b> blended projection</span>'
+        f'{value_legend}'
         '</div>'
     )
 
@@ -675,6 +736,20 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         '</details>'
     )
 
+    odds_note = ""
+    if has_odds:
+        odds_note = (
+            '<li><b>Sportsbet odds</b> &mdash; for imminent games we pull Sportsbet\'s '
+            '<span class="chip">N+ disposals</span> ladder. <b>SB N+ $price</b> is the price at '
+            'the floor; <b>model%</b> is our Normal(proj,&sigma;) chance of clearing it, '
+            '<b>mkt%</b> the bookie\'s implied (1/price), and the last figure is the edge '
+            '(model &times; price &minus; 1). The disposal cell is tinted '
+            '<span style="color:var(--good);font-weight:700">green</span> when that edge is '
+            '&ge;5% (clear value), <span style="color:var(--mid);font-weight:700">amber</span> '
+            'when it is 0&ndash;5% (borderline), and left plain otherwise. A '
+            '<span style="color:var(--good);font-weight:700">&#9650; better</span> line flags a '
+            'different rung that prices up as stronger value than the floor. Implied% ignores the '
+            'bookie\'s margin, so treat small edges with care.</li>')
     skip_note = ""
     if skipped:
         names = ", ".join(sorted({t for g in skipped for t in (g["home"], g["away"])}))
@@ -682,28 +757,28 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
                      f'current-season data for: {names}.</li>')
     notes = (
         '<div class="notes"><h3>Method &amp; caveats</h3><ul>'
-        '<li><b>Disposal floor</b> &mdash; the projection minus a margin of safety '
+        f'<li><b>Disposal floor</b> &mdash; the projection minus a margin of safety '
         '(z<sub>conf</sub> &times; the player\'s recent std-dev), so erratic players are '
-        'discounted more. Under a normal approximation they clear it in about the chosen '
-        'confidence% of games. The dial above sets that confidence live.</li>'
+        f'discounted more. Under a normal approximation they clear it in about {cpc}% of '
+        'games.</li>'
         f'<li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;{gpc}% under '
         'Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell '
         f'is highlighted when the floor backs 1+ goal at {gpc}%. <b>1+ rate</b> is a supporting '
-        'figure &mdash; the separate empirical share of recent games with a goal. Goals stay at '
-        f'{gpc}% regardless of the disposal dial.</li>'
+        'figure &mdash; the separate empirical share of recent games with a goal.</li>'
         '<li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; recent form '
         'is split across three windows (L3/L5/L10). With H2H: '
         '<span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>, '
         'without: <span class="chip">0.55&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.25&middot;L10</span>; '
         'H2H is recency-weighted (2026 counts 3&times; a 2024 meeting).</li>'
-        '<li>Players are sorted by disposal projection and '
-        '<b>filtered to a disposal floor of at least 10</b> at the chosen confidence. '
+        f'<li>Players are sorted by disposal projection and '
+        f'<b>filtered to a disposal floor of at least 10</b> at {cpc}% confidence. '
         'Floors use current-season games (recent games across seasons if too few).</li>'
         '<li><b>Named teams</b> &mdash; once the official team is posted (usually Thursday '
         'night), the list is cut to the named 22 (emergencies excluded) and the card shows '
         '<span class="lineup named">named team</span>. Until then it shows '
         '<span class="lineup pending">team not yet named</span> and lists every current-season '
         'player. Source: the AFL API.</li>'
+        f'{odds_note}'
         f'{skip_note}'
         '</ul></div>'
     )
@@ -721,7 +796,6 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 <body><div class="wrap">
 <header class="top"><div class="brand"><img class="logo" src="{icons['svg']}" alt=""><h1>Punters Mate</h1></div>
 <select id="game" aria-label="Select match"></select>
-{dial}
 <p class="meta" id="meta"></p></header>
 <p class="sub">Confidence floors &middot; disposals <span id="subDisp">{cpc}</span>% &middot; goals {gpc}% &middot; \
 {M.CURRENT_SEASON} &middot; generated {date.today()} &middot; source: {csv}</p>
@@ -749,6 +823,8 @@ def main():
                     help="fixture cache JSON; loaded if it exists, else fetched and saved")
     ap.add_argument("--insecure", action="store_true",
                     help="disable SSL verification (corporate networks)")
+    ap.add_argument("--odds", action="store_true",
+                    help="pull Sportsbet disposal odds and flag value (AU IP only; off by default)")
     args = ap.parse_args()
 
     df = M.load(args.csv)
@@ -767,7 +843,8 @@ def main():
                 json.dump(fixture, fh)
             print(f"Saved fixture to {args.fixture} ({len(fixture)} games)")
 
-    games, skipped = build_games(df, fixture, args.year, args.conf, verify=not args.insecure)
+    games, skipped = build_games(df, fixture, args.year, args.conf,
+                                 verify=not args.insecure, odds=args.odds)
     to_html(games, skipped, args.out, args.csv, args.conf)
 
 
