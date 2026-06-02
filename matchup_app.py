@@ -405,11 +405,11 @@ body{margin:0;min-height:100vh;color:var(--ink);background:#fff;
 header.top{position:sticky;top:0;z-index:10;
            background:rgba(255,255,255,.92);
            backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-           padding:12px 0 10px;border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;margin:0 0 9px}
-.logo{width:32px;height:32px;border-radius:9px;flex:none;
+           padding:14px 0 11px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;margin:0 0 11px}
+.logo{width:28px;height:28px;border-radius:8px;flex:none;
       box-shadow:0 2px 8px rgba(12,47,107,.18)}
-h1{font-size:17px;margin:0;letter-spacing:.01em;font-weight:700;color:var(--ink)}
+h1{font-size:20px;margin:0;letter-spacing:-.015em;font-weight:750;color:var(--ink);line-height:1}
 select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
        border-radius:10px;padding:12px 12px;font-size:16px;-webkit-appearance:none;
        appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),
@@ -539,6 +539,21 @@ DATA.games.forEach((g, i) => {
 
 const DASH = '\\u2013', DOT = ' \\u00b7 ';
 const HOT = 85;   // 1+ goal rate above this is flagged as "very likely"
+// "2026-06-04 19:30:00" -> "Thu 4 Jun, 7:30pm" (drop the seconds, read for a phone)
+const _DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const _MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(s){
+  if(!s) return '';
+  const m = String(s).match(/(\\d{4})-(\\d{2})-(\\d{2})(?:[ T](\\d{2}):(\\d{2}))?/);
+  if(!m) return s;
+  const d = new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0));
+  let out = _DOW[d.getDay()] + ' ' + d.getDate() + ' ' + _MON[d.getMonth()];
+  if(m[4] !== undefined){
+    let h = +m[4]; const ap = h < 12 ? 'am' : 'pm'; h = h % 12 || 12;
+    out += ', ' + h + ':' + m[5] + ap;
+  }
+  return out;
+}
 function f1(v){ return v === null ? DASH : v.toFixed(1); }
 function f0(v){ return v === null ? DASH : Math.round(v).toString(); }
 function pctCls(p){ return p > HOT ? 'elite' : (p >= GCONF ? 'hi' : (p >= 50 ? 'mid' : 'lo')); }
@@ -638,7 +653,7 @@ function teamCard(side, team, opp, view, named){
 function render(i){
   curGame = i;
   const g = DATA.games[i];
-  meta.textContent = 'Round ' + g.round + DOT + (g.date || '') + DOT + (g.venue || '');
+  meta.textContent = 'Round ' + g.round + DOT + fmtDate(g.date) + DOT + (g.venue || '');
   out.innerHTML =
     teamCard('home', g.home, g.away, g.home_view, g.home_named) +
     teamCard('away', g.away, g.home, g.away_view, g.away_named);
