@@ -465,15 +465,12 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
            font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
 .stat .big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15;
            margin:3px 0 2px}
-.stat.disp .big{color:var(--disp)}.stat.goal .big{color:var(--goal)}.stat.fan .big{color:var(--fan)}
-/* Fantasy is the third, full-width card under the disposals/goals pair */
-.stat.fan{grid-column:1/-1}
+.stat.disp .big{color:var(--disp)}.stat.fan .big{color:var(--fan)}
 .stat .big .u{font-size:11px;font-weight:600;color:var(--mut);margin-left:3px}
 .proj{display:inline-block;font-size:11px;font-weight:600;color:var(--mut)}
 .bar{height:6px;border-radius:99px;background:rgba(12,47,107,.1);overflow:hidden;margin:7px 0 6px}
 .bar>span{display:block;height:100%;border-radius:99px}
-.stat.disp .bar>span{background:var(--disp)}.stat.goal .bar>span{background:var(--goal)}
-.stat.fan .bar>span{background:var(--fan)}
+.stat.disp .bar>span{background:var(--disp)}.stat.fan .bar>span{background:var(--fan)}
 .stat.fan .sbline .sbtag{color:var(--fan)}.stat.fan .sbline.ev .sbtag{color:var(--good)}
 .det{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
 /* Sportsbet disposal odds: price at the floor + best value lean */
@@ -491,8 +488,17 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .badge.yes{background:rgba(26,158,106,.14);color:var(--good);border:1px solid rgba(26,158,106,.4)}
 .pct.hi{color:var(--good)}.pct.mid{color:var(--mid)}.pct.lo{color:var(--mut)}
 .pct.elite{color:var(--good);font-weight:800}
-/* goal floor backs 1+ goals at the confidence level — flag the whole goal cell */
-.stat.goal.hot{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
+/* Goals: a compact, full-width probability strip under the disposals/fantasy pair
+   (sparse Poisson, so it's framed by scoring % rather than a Normal floor) */
+.gstrip{grid-column:1/-1;display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;
+        padding:7px 11px;border:1px solid var(--line);border-radius:11px;
+        background:transparent;font-variant-numeric:tabular-nums}
+.gstrip .glabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:600}
+.gstrip .gprob{font-size:13px;color:var(--mut)}
+.gstrip .gprob b{font-size:15px;color:var(--goal);font-weight:700}
+.gstrip .gprob.sub b,.gstrip .gprob.sub{color:var(--mut)}
+.gstrip.hot .gprob b{color:var(--good)}
+.gstrip .gdet{font-size:10.5px;color:var(--mut);margin-left:auto}
 /* priced cells (disposals, fantasy) tinted by betting value at the floor: clear (green) / borderline (amber) */
 .stat.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
 .stat.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
@@ -642,26 +648,29 @@ function dispStat(r, o3, dmax){
   const w = (r.D_proj && dmax) ? Math.max(4, Math.min(100, r.D_proj / dmax * 100)) : 0;
   const det = 'proj ' + f1(r.D_proj) + DOT + 'avg ' + f1(r.D_avg) + DOT +
               'L5 ' + f1(r.D_L5) + DOT + 'v' + o3 + ' ' + f1(r.D_vs) + ' (' + r.D_n + ')';
-  return '<div class="stat disp' + valCls + '"><div class="lbl"><span>Disposals</span>'+
-    '<span>' + curConf + '% conf</span></div>'+
+  return '<div class="stat disp' + valCls + '"><div class="lbl"><span>Disposals</span></div>'+
     '<div class="big">' + f0(floor) + '<span class="u">min</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det">' + det + '</div>' + odds + '</div>';
 }
-function goalStat(r, o3, gmax){
-  const floor = r.G_floor;              // hero: conf% goal floor (k+)
-  const any = r.G_any;                  // supporting: empirical 1+ rate
-  const backed = floor !== null && floor >= 1;
-  const w = (r.G_proj && gmax) ? Math.max(4, Math.min(100, r.G_proj / gmax * 100)) : 0;
-  const pc = any === null ? 'lo' : pctCls(any);
+// Goals is a sparse Poisson count, not a Normal floor, so it gets a compact strip
+// framed by scoring probability (the real anytime/2+ markets) rather than a "min"
+// floor. P(>=1) = 1 - e^-lambda, P(>=2) = 1 - e^-lambda(1+lambda), lambda = proj.
+function goalStrip(r, o3){
+  const lam = r.G_proj;
+  const has = lam !== null && lam !== undefined;
+  const p1 = has ? Math.round((1 - Math.exp(-lam)) * 100) : null;
+  const p2 = has ? Math.round((1 - Math.exp(-lam) * (1 + lam)) * 100) : null;
+  const backed = p1 !== null && p1 >= GCONF;     // model backs an anytime goal
+  const any = r.G_any;                           // supporting: empirical 1+ rate
   const anyTxt = any === null ? DASH : Math.round(any) + '%';
-  const det = 'proj ' + f1(r.G_proj) + DOT + 'avg ' + f1(r.G_avg) + DOT +
-              'L5 ' + f1(r.G_L5) + DOT + 'v' + o3 + ' ' + f1(r.G_vs) + ' (' + r.D_n + ')';
-  return '<div class="stat goal' + (backed ? ' hot' : '') + '"><div class="lbl"><span>Goals</span>'+
-    '<span>' + GCONF + '% conf</span></div>'+
-    '<div class="big">' + (floor === null ? DASH : floor) + '<span class="u">+ goals</span></div>'+
-    '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
-    '<div class="det"><b class="pct ' + pc + '">' + anyTxt + '</b> 1+ rate' + DOT + det + '</div></div>';
+  const det = 'proj ' + f1(r.G_proj) + DOT + anyTxt + ' 1+ rate' + DOT +
+              'avg ' + f1(r.G_avg) + DOT + 'L5 ' + f1(r.G_L5) + DOT + 'v' + o3 + ' ' + f1(r.G_vs);
+  return '<div class="gstrip' + (backed ? ' hot' : '') + '">'+
+    '<span class="glabel">Goals</span>'+
+    '<span class="gprob"><b>' + (p1 === null ? DASH : p1 + '%') + '</b> anytime</span>'+
+    '<span class="gprob sub">' + (p2 === null ? DASH : p2 + '%') + ' 2+</span>'+
+    '<span class="gdet">' + det + '</span></div>';
 }
 // Highest-edge rung within the trusted 50-95% model band for the Fantasy ladder.
 // Sportsbet posts Fantasy in steps of 5, so the exact integer floor is rarely on
@@ -698,8 +707,7 @@ function fanStat(r, o3, fmax){
   const w = (r.F_proj && fmax) ? Math.max(4, Math.min(100, r.F_proj / fmax * 100)) : 0;
   const det = 'proj ' + f1(r.F_proj) + DOT + 'avg ' + f1(r.F_avg) + DOT +
               'L5 ' + f1(r.F_L5) + DOT + 'v' + o3 + ' ' + f1(r.F_vs) + ' (' + r.D_n + ')';
-  return '<div class="stat fan' + valCls + '"><div class="lbl"><span>Fantasy</span>'+
-    '<span>' + curConf + '% conf</span></div>'+
+  return '<div class="stat fan' + valCls + '"><div class="lbl"><span>Fantasy</span></div>'+
     '<div class="big">' + f0(floor) + '<span class="u">min pts</span></div>'+
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det">' + det + '</div>' + odds + '</div>';
@@ -719,15 +727,14 @@ function teamCard(side, team, opp, view, named){
     return '<div class="card ' + side + '">' + head +
       '<div class="empty">No players clear a ' + FLOOR_MIN + '-disposal floor at ' + curConf + '% confidence.</div></div>';
   const dmax = Math.max(...shown.map(r => r.D_proj || 0), 1);
-  const gmax = Math.max(...shown.map(r => r.G_proj || 0), 1);
   const fmax = Math.max(...shown.map(r => r.F_proj || 0), 1);
   let rows = '';
   shown.forEach((r) => {
     rows += '<div class="prow"><div class="phead">'+
       '<div class="pname">' + r.player + '</div>'+
       '<div class="pmeta">' + r.GP + ' GP \\u00b7 ' + r.R_n + 'g</div></div>'+
-      '<div class="stats">' + dispStat(r, o3, dmax) + goalStat(r, o3, gmax) +
-      fanStat(r, o3, fmax) + '</div></div>';
+      '<div class="stats">' + dispStat(r, o3, dmax) + fanStat(r, o3, fmax) +
+      goalStrip(r, o3) + '</div></div>';
   });
   return '<div class="card ' + side + '">' + head + rows + '</div>';
 }
@@ -821,10 +828,9 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
     ) if has_odds else ''
     legend_items = (
         f'<span><b>min</b> disposal floor &mdash; projection minus the {cpc}% margin of safety</span>'
-        f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {gpc}% confidence</span>'
-        '<span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span>'
-        '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         f'<span><b>min pts</b> AFL Fantasy floor &mdash; same {cpc}% margin of safety</span>'
+        '<span><b>anytime</b> model P(1+ goal); <b>2+</b> P(2+) &mdash; Poisson(proj)</span>'
+        '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         '<span><b>proj</b> blended projection</span>'
         f'{value_legend}'
     )
@@ -887,9 +893,10 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         '(z<sub>conf</sub> &times; the player\'s recent std-dev), so erratic players are '
         f'discounted more. Under a normal approximation they clear it in about {cpc}% of '
         'games.</li>'
-        f'<li><b>Goal floor</b> (hero) &mdash; the largest k with P(&ge;k)&ge;{gpc}% under '
-        'Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell '
-        f'is highlighted when the floor backs 1+ goal at {gpc}%. <b>1+ rate</b> is a supporting '
+        '<li><b>Goals</b> &mdash; goals are a sparse count, so instead of a floor the compact '
+        'strip shows scoring <b>probability</b> under Poisson(&lambda;=projection): '
+        '<b>anytime</b> = P(&ge;1 goal) = 1&minus;e<sup>&minus;&lambda;</sup>, <b>2+</b> = P(&ge;2). '
+        f'The anytime figure turns green when it clears {gpc}%. <b>1+ rate</b> is a supporting '
         'figure &mdash; the separate empirical share of recent games with a goal.</li>'
         f'<li><b>Fantasy floor</b> &mdash; AFL Fantasy (Classic) points, derived from the box '
         'score (<span class="chip">3&middot;K + 2&middot;HB + 3&middot;M + 4&middot;T + '
