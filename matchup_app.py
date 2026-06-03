@@ -672,16 +672,20 @@ function goalStrip(r, o3){
     '<span class="gprob sub">' + (p2 === null ? DASH : p2 + '%') + ' 2+</span>'+
     '<span class="gdet">' + det + '</span></div>';
 }
-// Highest-edge rung within the trusted 50-95% model band for the Fantasy ladder.
-// Sportsbet posts Fantasy in steps of 5, so the exact integer floor is rarely on
-// the board -- we price the best backable rung instead of the floor itself.
-function bestFanRung(r){
-  if (!r.od_ladder_F || !r.F_sigma) return null;
+// Best-edge Fantasy rung AT OR BELOW the model floor. Sportsbet posts Fantasy in
+// steps of 5, so the exact integer floor is rarely on the board -- we suggest the
+// nearest priced rung the model still clears at >= the floor's confidence. We never
+// suggest a rung above the floor: that would be a line our own model rates below
+// its confidence bar (improbable), contradicting the "back the floor" premise.
+// Constrained this way, the max-edge rung is the highest safe rung (best odds that
+// still clears conf%).
+function bestFanRung(r, floor){
+  if (!r.od_ladder_F || !r.F_sigma || floor === null) return null;
   let best = null;
   for (const k in r.od_ladder_F){
     const n = +k, price = r.od_ladder_F[k];
+    if (n > floor) continue;                 // only rungs at/below the floor (model_p >= conf)
     const mp = normCdf((r.F_proj - n) / r.F_sigma);
-    if (mp < 0.50 || mp > 0.95) continue;
     const ev = mp * price - 1;
     if (!best || ev > best.ev) best = {n, price, mp, ev};
   }
@@ -693,7 +697,7 @@ function fanStat(r, o3, fmax){
   // and tint the cell green (clear) / amber (borderline) / none, like disposals.
   let valCls = '', odds = '';
   if (r.od_ladder_F){
-    const b = bestFanRung(r);
+    const b = bestFanRung(r, floor);
     if (b){
       valCls = b.ev >= VAL_CLEAR ? ' val-clear' : (b.ev >= 0 ? ' val-border' : '');
       odds += '<div class="sbline' + (b.ev > 0 ? ' ev' : '') + '">'+
@@ -701,7 +705,7 @@ function fanStat(r, o3, fmax){
         '<span>model ' + Math.round(b.mp * 100) + '% ' + DOT + 'mkt ' + Math.round(100 / b.price) + '%' +
         DOT + (b.ev >= 0 ? '+' : '') + Math.round(b.ev * 100) + '%</span></div>';
     } else {
-      odds += '<div class="sbnone">no Sportsbet fantasy line in the backable range</div>';
+      odds += '<div class="sbnone">no Sportsbet fantasy line at or below the floor</div>';
     }
   }
   const w = (r.F_proj && fmax) ? Math.max(4, Math.min(100, r.F_proj / fmax * 100)) : 0;
@@ -880,7 +884,10 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
             'when it is 0&ndash;5% (borderline), and left plain otherwise. A '
             '<span style="color:var(--good);font-weight:700">&#9650; better</span> line flags a '
             'different rung that prices up as stronger value than the floor. Implied% ignores the '
-            'bookie\'s margin, so treat small edges with care.</li>')
+            'bookie\'s margin, so treat small edges with care. Sportsbet posts <b>fantasy in steps '
+            'of 5</b>, so we suggest the nearest priced rung <b>at or below the floor</b> (never '
+            'above it &mdash; that would be a line the model already rates below its confidence); '
+            'if no rung sits at/below the floor, no fantasy line is shown.</li>')
     skip_note = ""
     if skipped:
         names = ", ".join(sorted({t for g in skipped for t in (g["home"], g["away"])}))
