@@ -1,18 +1,18 @@
-name: Publish matchup page
+name: Refresh stats CSV
 
-# Rebuilds docs/index.html (the GitHub Pages site) on a weekly schedule.
-# Default: an incremental update that scrapes only the current season and
-# appends any round not already in the committed CSV — prior seasons and
-# already-captured rounds are taken from the CSV and never re-scraped.
-# Manual runs can skip the scrape entirely, or force a full re-scrape.
+# Refreshes games_2022_2026.csv on a weekly schedule (incremental: scrapes only
+# the current season and appends any round not already in the committed CSV).
+#
+# It deliberately does NOT rebuild or commit docs/index.html. The live page
+# embeds Sportsbet "N+ disposals" odds, and Sportsbet geo-restricts to AU — a
+# GitHub runner (non-AU IP) cannot fetch them, so a CI rebuild would publish an
+# odds-less page and wipe the locally-built odds. The page is therefore built
+# and committed from an AU machine (python matchup_app.py --odds). This job just
+# keeps the underlying stats current; rebuild the page locally to publish.
 
 on:
   workflow_dispatch:
     inputs:
-      skip_scrape:
-        description: "Rebuild the page from the committed CSV without scraping"
-        type: boolean
-        default: false
       full_rescrape:
         description: "Re-scrape every season from scratch (backfill/repair)"
         type: boolean
@@ -26,11 +26,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-matchups
+  group: refresh-stats-csv
   cancel-in-progress: false
 
 jobs:
-  publish:
+  refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -54,7 +54,6 @@ jobs:
       - name: Refresh stats
         # Default = incremental (current season's new round only). Prior seasons
         # come from the committed CSV. full_rescrape forces a complete re-scrape.
-        if: ${{ github.event.inputs.skip_scrape != 'true' }}
         run: |
           if [ "${{ github.event.inputs.full_rescrape }}" = "true" ]; then
             python3 update_stats.py --full
@@ -62,19 +61,17 @@ jobs:
             python3 update_stats.py
           fi
 
-      - name: Build matchup page
-        # Stats come from the (committed/refreshed) CSV; the fixture is pulled
-        # live from Squiggle. No --insecure needed on GitHub's runners.
-        run: python3 matchup_app.py --out docs/index.html
-
-      - name: Commit & push if changed
+      - name: Commit & push CSV if changed
+        # Only the stats CSV — never docs/index.html (see header: the live page's
+        # Sportsbet odds can only be fetched from an AU IP, so the page is built
+        # and committed locally to avoid publishing an odds-less rebuild).
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add games_2022_2026.csv docs/index.html docs/apple-touch-icon.png
+          git add games_2022_2026.csv
           if git diff --cached --quiet; then
-            echo "No changes to publish."
+            echo "No CSV changes to commit."
           else
-            git commit -m "Auto-refresh matchup page ($(date -u +%Y-%m-%d))"
+            git commit -m "Auto-refresh stats CSV ($(date -u +%Y-%m-%d))"
             git push
           fi
