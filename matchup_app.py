@@ -246,9 +246,10 @@ def _view_to_records(view: pd.DataFrame) -> list[dict]:
     floor is exact after the floor()/round-down."""
     cols = ["player", "GP", "R_n",
             "D_avg", "D_L5", "D_vs", "D_n", "D_proj", "D_sigma",
-            "G_avg", "G_L5", "G_vs", "G_proj", "G_floor", "G_any"]
+            "G_avg", "G_L5", "G_vs", "G_proj", "G_floor", "G_any",
+            "F_avg", "F_L5", "F_vs", "F_proj", "F_floor", "F_sigma"]
     ints = {"GP", "D_n", "R_n", "G_floor"}
-    round2 = {"D_sigma"}
+    round2 = {"D_sigma", "F_sigma"}
     out = []
     for _, r in view[cols].iterrows():
         rec = {}
@@ -271,14 +272,15 @@ ODDS_WINDOW_DAYS = 9    # only pull Sportsbet disposal odds for games this soon
 ODDS_MIN_EDGE = 0.05    # surface a value pick only when the model edge clears this
 
 
-def _attach_odds(records: list[dict], ladder: dict, conf: float) -> int:
-    """Join a game's Sportsbet disposal ladder onto its player records (in place).
+def _attach_odds(records: list[dict], ladder: dict, proj_key: str, sigma_key: str,
+                 ladder_key: str, best_key: str) -> int:
+    """Join a game's Sportsbet N+ ladder for one stat onto its player records.
 
-    Adds per matched player: `od_ladder` ({N: price}) so the page can show the
-    bookie price at the dial-driven floor, and `od_best` (the best value lean, or
-    None) computed against the model's Normal(proj, sigma). EV is independent of
-    the confidence dial, so it's settled here at build time. Returns the count of
-    players matched to a ladder."""
+    Adds per matched player: `<ladder_key>` ({N: price}) so the page can show the
+    bookie price at the dial-driven floor, and `<best_key>` (the best value lean,
+    or None) computed against the model's Normal(proj, sigma) using `proj_key` /
+    `sigma_key`. EV is independent of the confidence dial, so it's settled here at
+    build time. Returns the count of players matched to a ladder."""
     by_csv = {csv: sb for sb, csv in
               SB.match_players(list(ladder), [r["player"] for r in records]).items()}
     matched = 0
@@ -287,9 +289,9 @@ def _attach_odds(records: list[dict], ladder: dict, conf: float) -> int:
         if not sb:
             continue
         rung = ladder[sb]
-        r["od_ladder"] = {str(n): p for n, p in sorted(rung.items())}
-        r["od_best"] = SB.best_value(rung, r.get("D_proj"), r.get("D_sigma"),
-                                     min_edge=ODDS_MIN_EDGE)
+        r[ladder_key] = {str(n): p for n, p in sorted(rung.items())}
+        r[best_key] = SB.best_value(rung, r.get(proj_key), r.get(sigma_key),
+                                    min_edge=ODDS_MIN_EDGE)
         matched += 1
     return matched
 
@@ -360,19 +362,33 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
         home_rec = _view_to_records(vh)
         away_rec = _view_to_records(va)
 
-        # Disposal odds: only for imminent games (props post a day or two out) and
-        # only when --odds is on. Per-game failures are non-fatal.
+        # Player-prop odds: only for imminent games (props post a day or two out)
+        # and only when --odds is on. We pull two N+ ladders -- disposals and AFL
+        # Fantasy points -- and value each against its own Normal(proj, sigma).
+        # Per-game failures are non-fatal.
         if odds and within and sb_events is not None:
             try:
                 ev = SB.find_event(home, away, g["date"], sb_events)
                 if ev:
-                    ladder = SB.disposal_ladder(ev["id"], odds_scraper)
-                    if ladder:
-                        mh = _attach_odds(home_rec, ladder, conf)
-                        ma = _attach_odds(away_rec, ladder, conf)
-                        print(f"  odds: {home} v {away} -> {mh}+{ma} players priced")
+                    eid = ev["id"]
+                    d_ladder = SB.stat_ladder(eid, "disposals", odds_scraper)
+                    f_ladder = SB.stat_ladder(eid, "fantasy", odds_scraper)
+                    if d_ladder:
+                        mh = _attach_odds(home_rec, d_ladder, "D_proj", "D_sigma",
+                                          "od_ladder", "od_best")
+                        ma = _attach_odds(away_rec, d_ladder, "D_proj", "D_sigma",
+                                          "od_ladder", "od_best")
+                        print(f"  odds: {home} v {away} -> disposals {mh}+{ma} priced")
                     else:
                         print(f"  odds: {home} v {away} -> no disposal markets yet")
+                    if f_ladder:
+                        fh = _attach_odds(home_rec, f_ladder, "F_proj", "F_sigma",
+                                          "od_ladder_F", "od_best_F")
+                        fa = _attach_odds(away_rec, f_ladder, "F_proj", "F_sigma",
+                                          "od_ladder_F", "od_best_F")
+                        print(f"  odds: {home} v {away} -> fantasy {fh}+{fa} priced")
+                    else:
+                        print(f"  odds: {home} v {away} -> no fantasy markets yet")
             except Exception as e:
                 print(f"  odds pull failed for {home} v {away}: {type(e).__name__}: {e}")
 
@@ -395,7 +411,7 @@ _CSS = """
    accents echo the app icon (blue disposals, gold goals). */
 :root{--bg:#ffffff;--card:#ffffff;--inset:#f3f7fd;
       --line:rgba(12,47,107,.14);--ink:#0c2f6b;--mut:#5b6f96;
-      --disp:#1a63dc;--goal:#bf820a;--home:#1a63dc;--away:#e0612f;
+      --disp:#1a63dc;--goal:#bf820a;--fan:#7a3ff2;--home:#1a63dc;--away:#e0612f;
       --good:#1a9e6a;--mid:#c0890f;--brand:#1551bf;}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -449,12 +465,16 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
            font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
 .stat .big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15;
            margin:3px 0 2px}
-.stat.disp .big{color:var(--disp)}.stat.goal .big{color:var(--goal)}
+.stat.disp .big{color:var(--disp)}.stat.goal .big{color:var(--goal)}.stat.fan .big{color:var(--fan)}
+/* Fantasy is the third, full-width card under the disposals/goals pair */
+.stat.fan{grid-column:1/-1}
 .stat .big .u{font-size:11px;font-weight:600;color:var(--mut);margin-left:3px}
 .proj{display:inline-block;font-size:11px;font-weight:600;color:var(--mut)}
 .bar{height:6px;border-radius:99px;background:rgba(12,47,107,.1);overflow:hidden;margin:7px 0 6px}
 .bar>span{display:block;height:100%;border-radius:99px}
 .stat.disp .bar>span{background:var(--disp)}.stat.goal .bar>span{background:var(--goal)}
+.stat.fan .bar>span{background:var(--fan)}
+.stat.fan .sbline .sbtag{color:var(--fan)}.stat.fan .sbline.ev .sbtag{color:var(--good)}
 .det{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
 /* Sportsbet disposal odds: price at the floor + best value lean */
 .sbline{margin-top:7px;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;
@@ -473,9 +493,9 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .pct.elite{color:var(--good);font-weight:800}
 /* goal floor backs 1+ goals at the confidence level — flag the whole goal cell */
 .stat.goal.hot{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
-/* disposal cell tinted by betting value at the floor: clear (green) / borderline (amber) */
-.stat.disp.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
-.stat.disp.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
+/* priced cells (disposals, fantasy) tinted by betting value at the floor: clear (green) / borderline (amber) */
+.stat.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
+.stat.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
 .na{color:var(--mut)}
 /* collapsible reference panels (betting strategy + method): one shared type
    scale — 12.5px/1.55 body, 13px heads, 20px list indent, 6px between items */
@@ -586,6 +606,12 @@ function dispFloor(r){
   if (r.D_sigma === null) return Math.max(0, Math.floor(r.D_proj * 0.85));
   return Math.max(0, Math.floor(r.D_proj - ZCONF * r.D_sigma));
 }
+// Fantasy floor: same Normal model as disposals on the AFL Fantasy projection.
+function fanFloor(r){
+  if (r.F_proj === null || r.F_proj === undefined) return null;
+  if (r.F_sigma === null) return Math.max(0, Math.floor(r.F_proj * 0.85));
+  return Math.max(0, Math.floor(r.F_proj - ZCONF * r.F_sigma));
+}
 
 function dispStat(r, o3, dmax){
   const floor = dispFloor(r);
@@ -637,6 +663,47 @@ function goalStat(r, o3, gmax){
     '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
     '<div class="det"><b class="pct ' + pc + '">' + anyTxt + '</b> 1+ rate' + DOT + det + '</div></div>';
 }
+// Highest-edge rung within the trusted 50-95% model band for the Fantasy ladder.
+// Sportsbet posts Fantasy in steps of 5, so the exact integer floor is rarely on
+// the board -- we price the best backable rung instead of the floor itself.
+function bestFanRung(r){
+  if (!r.od_ladder_F || !r.F_sigma) return null;
+  let best = null;
+  for (const k in r.od_ladder_F){
+    const n = +k, price = r.od_ladder_F[k];
+    const mp = normCdf((r.F_proj - n) / r.F_sigma);
+    if (mp < 0.50 || mp > 0.95) continue;
+    const ev = mp * price - 1;
+    if (!best || ev > best.ev) best = {n, price, mp, ev};
+  }
+  return best;
+}
+function fanStat(r, o3, fmax){
+  const floor = fanFloor(r);
+  // Value the best in-band rung (the coarse ladder rarely prices the exact floor)
+  // and tint the cell green (clear) / amber (borderline) / none, like disposals.
+  let valCls = '', odds = '';
+  if (r.od_ladder_F){
+    const b = bestFanRung(r);
+    if (b){
+      valCls = b.ev >= VAL_CLEAR ? ' val-clear' : (b.ev >= 0 ? ' val-border' : '');
+      odds += '<div class="sbline' + (b.ev > 0 ? ' ev' : '') + '">'+
+        '<span class="sbtag">SB ' + b.n + '+ $' + b.price.toFixed(2) + '</span>'+
+        '<span>model ' + Math.round(b.mp * 100) + '% ' + DOT + 'mkt ' + Math.round(100 / b.price) + '%' +
+        DOT + (b.ev >= 0 ? '+' : '') + Math.round(b.ev * 100) + '%</span></div>';
+    } else {
+      odds += '<div class="sbnone">no Sportsbet fantasy line in the backable range</div>';
+    }
+  }
+  const w = (r.F_proj && fmax) ? Math.max(4, Math.min(100, r.F_proj / fmax * 100)) : 0;
+  const det = 'proj ' + f1(r.F_proj) + DOT + 'avg ' + f1(r.F_avg) + DOT +
+              'L5 ' + f1(r.F_L5) + DOT + 'v' + o3 + ' ' + f1(r.F_vs) + ' (' + r.D_n + ')';
+  return '<div class="stat fan' + valCls + '"><div class="lbl"><span>Fantasy</span>'+
+    '<span>' + curConf + '% conf</span></div>'+
+    '<div class="big">' + f0(floor) + '<span class="u">min pts</span></div>'+
+    '<div class="bar"><span style="width:' + w.toFixed(0) + '%"></span></div>'+
+    '<div class="det">' + det + '</div>' + odds + '</div>';
+}
 function teamCard(side, team, opp, view, named){
   const o3 = opp.slice(0, 3);
   // Lineup badge: green when the official team is named (list filtered to the
@@ -653,12 +720,14 @@ function teamCard(side, team, opp, view, named){
       '<div class="empty">No players clear a ' + FLOOR_MIN + '-disposal floor at ' + curConf + '% confidence.</div></div>';
   const dmax = Math.max(...shown.map(r => r.D_proj || 0), 1);
   const gmax = Math.max(...shown.map(r => r.G_proj || 0), 1);
+  const fmax = Math.max(...shown.map(r => r.F_proj || 0), 1);
   let rows = '';
-  shown.forEach((r, i) => {
+  shown.forEach((r) => {
     rows += '<div class="prow"><div class="phead">'+
       '<div class="pname">' + r.player + '</div>'+
       '<div class="pmeta">' + r.GP + ' GP \\u00b7 ' + r.R_n + 'g</div></div>'+
-      '<div class="stats">' + dispStat(r, o3, dmax) + goalStat(r, o3, gmax) + '</div></div>';
+      '<div class="stats">' + dispStat(r, o3, dmax) + goalStat(r, o3, gmax) +
+      fanStat(r, o3, fmax) + '</div></div>';
   });
   return '<div class="card ' + side + '">' + head + rows + '</div>';
 }
@@ -747,14 +816,15 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 
     # When odds are present, explain the green/amber tint that replaced the old dial.
     value_legend = (
-        '<span><b class="vlg clear">green</b> / <b class="vlg border">amber</b> disposal cell '
-        '&mdash; clear / borderline betting value vs the Sportsbet price</span>'
+        '<span><b class="vlg clear">green</b> / <b class="vlg border">amber</b> disposal or fantasy '
+        'cell &mdash; clear / borderline betting value vs the Sportsbet price</span>'
     ) if has_odds else ''
     legend_items = (
         f'<span><b>min</b> disposal floor &mdash; projection minus the {cpc}% margin of safety</span>'
         f'<span><b>k+ goals</b> goal floor &mdash; most goals backable at {gpc}% confidence</span>'
         '<span><b class="pct hi">highlighted</b> goal floor backs 1+ goal</span>'
         '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
+        f'<span><b>min pts</b> AFL Fantasy floor &mdash; same {cpc}% margin of safety</span>'
         '<span><b>proj</b> blended projection</span>'
         f'{value_legend}'
     )
@@ -794,10 +864,11 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
     if has_odds:
         odds_note = (
             '<li><b>Sportsbet odds</b> &mdash; for imminent games we pull Sportsbet\'s '
-            '<span class="chip">N+ disposals</span> ladder. <b>SB N+ $price</b> is the price at '
+            '<span class="chip">N+ disposals</span> and <span class="chip">N+ fantasy points</span> '
+            'ladders. <b>SB N+ $price</b> is the price at '
             'the floor; <b>model%</b> is our Normal(proj,&sigma;) chance of clearing it, '
             '<b>mkt%</b> the bookie\'s implied (1/price), and the last figure is the edge '
-            '(model &times; price &minus; 1). The disposal cell is tinted '
+            '(model &times; price &minus; 1). The disposal/fantasy cell is tinted '
             '<span style="color:var(--good);font-weight:700">green</span> when that edge is '
             '&ge;5% (clear value), <span style="color:var(--mid);font-weight:700">amber</span> '
             'when it is 0&ndash;5% (borderline), and left plain otherwise. A '
@@ -820,6 +891,11 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         'Poisson(&lambda;=projection), shown as <span class="chip">k+ goals</span>; the cell '
         f'is highlighted when the floor backs 1+ goal at {gpc}%. <b>1+ rate</b> is a supporting '
         'figure &mdash; the separate empirical share of recent games with a goal.</li>'
+        f'<li><b>Fantasy floor</b> &mdash; AFL Fantasy (Classic) points, derived from the box '
+        'score (<span class="chip">3&middot;K + 2&middot;HB + 3&middot;M + 4&middot;T + '
+        '1&middot;HO + 6&middot;G + 1&middot;B + FF &minus; 3&middot;FA</span>). It is a '
+        'high-count, roughly symmetric stat, so it uses the same Normal floor as disposals '
+        f'(proj minus the {cpc}% margin of safety), calibrated to within ~1% in backtest.</li>'
         '<li><b>Projection</b> blend (backtest-tuned, season-anchored) &mdash; recent form '
         'is split across three windows (L3/L5/L10). With H2H: '
         '<span class="chip">0.65&middot;season + 0.15&middot;L3 + 0.05&middot;L5 + 0.05&middot;L10 + 0.10&middot;H2H</span>, '

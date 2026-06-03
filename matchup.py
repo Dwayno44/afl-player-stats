@@ -38,12 +38,25 @@ GOAL_CONF     = 0.65   # goals are sparse; a 75% Poisson floor is too strict, so
                        # goals clears 1+ here, vs ~1.39 at 75%)
 
 
+# AFL Fantasy (Classic / DreamTeam) is a fixed linear function of the box score,
+# so we derive it from the stored components rather than scraping a second source.
+FANTASY_WEIGHTS = {"kicks": 3, "handballs": 2, "marks": 3, "tackles": 4,
+                   "hit_outs": 1, "goals": 6, "behinds": 1,
+                   "frees_for": 1, "frees_against": -3}
+
+
 def load(csv: str) -> pd.DataFrame:
     df = pd.read_csv(csv)
     df["disposals"] = pd.to_numeric(df["disposals"], errors="coerce")
     df["round"]     = pd.to_numeric(df["round"], errors="coerce")
     # On afltables a blank goals cell means zero goals, not missing data.
     df["goals"]     = pd.to_numeric(df["goals"], errors="coerce").fillna(0)
+    # Derived AFL Fantasy points. A blank component is a zero count, but a game the
+    # player didn't feature in (no disposals) stays NaN so it isn't treated as a 0.
+    feat = df["disposals"].notna()
+    fan = sum(w * pd.to_numeric(df[c], errors="coerce").fillna(0)
+              for c, w in FANTASY_WEIGHTS.items())
+    df["fantasy"] = fan.where(feat)
     return df
 
 
@@ -162,22 +175,31 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int | None = None,
         vg = vs[vs.player == player]
         d_forms = form_means(g, "disposals")
         g_forms = form_means(g, "goals")
+        f_forms = form_means(g, "fantasy")
         d_avg, d_l5 = g["disposals"].mean(), d_forms["L5"]
         g_avg, g_l5 = g["goals"].mean(),     g_forms["L5"]
+        f_avg, f_l5 = g["fantasy"].mean(),   f_forms["L5"]
         d_vs = h2h_weighted(vg, "disposals")
         g_vs = h2h_weighted(vg, "goals")
+        f_vs = h2h_weighted(vg, "fantasy")
         has = len(vg) >= 1
 
         # Confidence floors from the player's recent games for this club.
         recent = recent_for_team(df, team, player)
         d_proj = project(d_forms, d_vs, d_avg, has)
         g_proj = project(g_forms, g_vs, g_avg, has)
+        f_proj = project(f_forms, f_vs, f_avg, has)
         # Floor = projection minus a volatility-scaled margin of safety. The std
         # (sigma) is exposed so the client can rebuild the floor at any confidence;
         # <3 recent games -> sigma None and a flat 15% haircut is used instead.
+        # Fantasy reuses the disposal (Normal) floor: it is a high-count, roughly
+        # symmetric stat, so proj - z*sigma is calibrated to within ~1% (backtest).
         d_recent = recent["disposals"].dropna()
         d_sigma = float(d_recent.std(ddof=1)) if len(d_recent) >= 3 else None
         d_floor = disposal_floor(d_proj, recent["disposals"], conf)
+        f_recent = recent["fantasy"].dropna()
+        f_sigma = float(f_recent.std(ddof=1)) if len(f_recent) >= 3 else None
+        f_floor = disposal_floor(f_proj, recent["fantasy"], conf)
         rows.append({
             "player": player, "GP": gp, "R_n": len(recent),
             "D_avg": d_avg, "D_L5": d_l5, "D_vs": d_vs, "D_n": len(vg),
@@ -186,6 +208,8 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int | None = None,
             "G_proj": g_proj,
             "G_floor": goal_floor(g_proj, goal_conf),
             "G_any": anytime_goal_pct(recent["goals"]),
+            "F_avg": f_avg, "F_L5": f_l5, "F_vs": f_vs,
+            "F_proj": f_proj, "F_floor": f_floor, "F_sigma": f_sigma,
         })
 
     out = pd.DataFrame(rows)

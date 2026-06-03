@@ -69,7 +69,27 @@ SB2CSV = {
     "western bulldogs": "Western Bulldogs",
 }
 
-_DISPOSAL_MARKET = re.compile(r"^(\d+)\+ Disposals\b", re.I)
+# Sportsbet labels each N+ player-prop family by stat. Map our CSV column name to
+# the word Sportsbet uses in the market title ("12+ Hitouts", "4+ Tackles", ...).
+STAT_MARKET_LABEL = {
+    "disposals": "Disposals",
+    "fantasy": "Fantasy Points",
+    "hit_outs": "Hitouts",
+    "tackles": "Tackles",
+    "clearances": "Clearances",
+    "marks": "Marks",
+    "kicks": "Kicks",
+    "handballs": "Handballs",
+}
+
+
+def _market_re(stat: str) -> re.Pattern:
+    """Regex matching this stat's 'N+ <Label>' market titles, capturing N."""
+    label = STAT_MARKET_LABEL.get(stat, stat.title())
+    return re.compile(rf"^(\d+)\+ {re.escape(label)}\b", re.I)
+
+
+_DISPOSAL_MARKET = _market_re("disposals")   # back-compat alias
 
 
 def make_scraper():
@@ -125,15 +145,17 @@ def find_event(home: str, away: str, date_str: str | None = None,
         return cands[0]
 
 
-def disposal_ladder(event_id: int, scraper=None) -> dict[str, dict[int, float]]:
-    """{player_name: {threshold: decimal_price}} from the event's "N+ Disposals"
+def stat_ladder(event_id: int, stat: str = "disposals",
+                scraper=None) -> dict[str, dict[int, float]]:
+    """{player_name: {threshold: decimal_price}} from the event's "N+ <Stat>"
     markets. Player names are Sportsbet's raw "Given Surname" strings."""
     scraper = scraper or make_scraper()
     r = scraper.get(EVENT_URL.format(eid=event_id), timeout=30)
     r.raise_for_status()
+    rx = _market_re(stat)
     ladder: dict[str, dict[int, float]] = {}
     for m in r.json().get("marketList", []):
-        mt = _DISPOSAL_MARKET.match(m.get("name", ""))
+        mt = rx.match(m.get("name", ""))
         if not mt:
             continue
         n = int(mt.group(1))
@@ -143,6 +165,11 @@ def disposal_ladder(event_id: int, scraper=None) -> dict[str, dict[int, float]]:
             if who and price is not None:
                 ladder.setdefault(who, {})[n] = float(price)
     return ladder
+
+
+def disposal_ladder(event_id: int, scraper=None) -> dict[str, dict[int, float]]:
+    """Back-compat: the disposals ladder (see stat_ladder)."""
+    return stat_ladder(event_id, "disposals", scraper)
 
 
 def match_players(sb_names, csv_names) -> dict[str, str]:
@@ -250,9 +277,10 @@ def _cmd_ladder(args, scraper):
         eid = ev["id"]
         print(f"{args.home} v {args.away} -> event {eid}\n")
 
-    ladder = disposal_ladder(eid, scraper)
+    ladder = stat_ladder(eid, args.stat, scraper)
     if not ladder:
-        print("No 'N+ Disposals' markets on this event (props may not be posted yet).")
+        print(f"No 'N+ {STAT_MARKET_LABEL.get(args.stat, args.stat.title())}' markets "
+              "on this event (props may not be posted yet).")
         return 0
     for player in sorted(ladder):
         rungs = sorted(ladder[player])
@@ -270,6 +298,8 @@ def main(argv=None) -> int:
     pl.add_argument("--home", help="home team (CSV name) -- with --away, finds the event")
     pl.add_argument("--away", help="away team (CSV name)")
     pl.add_argument("--date", help="YYYY-MM-DD to disambiguate double-ups")
+    pl.add_argument("--stat", default="disposals", choices=list(STAT_MARKET_LABEL),
+                    help="which N+ player-prop ladder to fetch")
     pl.set_defaults(func=_cmd_ladder)
     args = p.parse_args(argv)
 
