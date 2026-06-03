@@ -63,7 +63,6 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .prow:last-child{border-bottom:none}
 .phead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:9px}
 .pname{font-weight:600;font-size:15px;color:var(--ink)}
-.pname .rk{color:var(--mut);font-weight:600;font-size:12px;margin-right:7px}
 .pmeta{color:var(--mut);font-size:11.5px;white-space:nowrap}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .stat{background:var(--inset);border:1px solid var(--line);border-radius:11px;padding:10px 11px}
@@ -284,7 +283,7 @@ function teamCard(side, team, opp, view, named){
   let rows = '';
   shown.forEach((r, i) => {
     rows += '<div class="prow"><div class="phead">'+
-      '<div class="pname"><span class="rk">' + (i + 1) + '</span>' + r.player + '</div>'+
+      '<div class="pname">' + r.player + '</div>'+
       '<div class="pmeta">' + r.GP + ' GP \u00b7 ' + r.R_n + 'g</div></div>'+
       '<div class="stats">' + dispStat(r, o3, dmax) + goalStat(r, o3, gmax) + '</div></div>';
   });
