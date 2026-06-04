@@ -155,12 +155,16 @@ def _goal_txt(b):
 
 def render_text(games, gen) -> str:
     out = [f"PuntersMate — round bet summary (page generated {gen})", "=" * 60]
+    all_t1, all_t2, all_t3 = [], [], []
     for g in games:
         if not any("od_ladder" in r for r in g["home_view"] + g["away_view"]):
             continue
         p = game_picks(g)
         if not (p["t1"] or p["t2_add"] or p["goals"]):
             continue
+        all_t1 += list(p["t1"])
+        all_t2 += list(p["t1"]) + list(p["t2_add"])
+        all_t3 += list(p["t1"]) + list(p["t2_add"]) + list(p["goals"])
         out.append(f"\n{g['home']} v {g['away']}  ·  R{g['round']} · {fmt_awst(g)} · {g.get('venue','')}")
         out.append("  TIER 1 — highest confidence (greens):")
         out += [f"    • {_leg_txt(b)}" for b in p["t1"]] or ["    (none)"]
@@ -177,8 +181,19 @@ def render_text(games, gen) -> str:
         out.append(mline("Tier 1", m["t1"]))
         out.append(mline("Tier 1+2", m["t2"]))
         out.append(mline("Tier 1+2+3", m["t3"]))
+    # Round-wide grand multi: every leg of the tier across all games into one price.
+    out.append("\n" + "=" * 60)
+    out.append("ROUND-WIDE GRAND MULTI (all games combined):")
+    def gline(label, legs):
+        odds, n, miss = _multi(legs)
+        extra = f", {miss} unpriced" if miss else ""
+        return f"    {label}: ${odds:,.2f}  ({n} legs{extra})"
+    out.append(gline("Tier 1", all_t1))
+    out.append(gline("Tier 1+2", all_t2))
+    out.append(gline("Tier 1+2+3", all_t3))
     out.append("\nNote: combined prices are the fair product of legs. Same-game multi "
-               "legs are correlated, so Sportsbet's actual multi price will differ.")
+               "legs are correlated, so Sportsbet's actual multi price will differ; big "
+               "round-wide multis also exceed Sportsbet's per-multi leg limit.")
     return "\n".join(out)
 
 
@@ -213,12 +228,16 @@ def render_html(games, gen) -> str:
                 '<span style="font-weight:400;color:#5b6f96;font-size:12px">(fair = product of legs)</span></div>'
                 f'<table style="border-collapse:collapse"><tr>{cell("Tier 1", m["t1"])}'
                 f'{cell("Tier 1+2", m["t2"])}{cell("Tier 1+2+3", m["t3"])}</tr></table>')
+    all_t1, all_t2, all_t3 = [], [], []
     for g in games:
         if not any("od_ladder" in r for r in g["home_view"] + g["away_view"]):
             continue
         p = game_picks(g)
         if not (p["t1"] or p["t2_add"] or p["goals"]):
             continue
+        all_t1 += list(p["t1"])
+        all_t2 += list(p["t1"]) + list(p["t2_add"])
+        all_t3 += list(p["t1"]) + list(p["t2_add"]) + list(p["goals"])
         rows.append(
             f'<h3 style="margin:22px 0 6px;color:{C["ink"]}">{g["home"]} v {g["away"]}</h3>'
             f'<div style="color:{C["mut"]};font-size:13px;margin-bottom:8px">R{g["round"]} · {fmt_awst(g)} · {g.get("venue","")}</div>'
@@ -229,12 +248,22 @@ def render_html(games, gen) -> str:
             f'<div style="font-weight:700;color:{C["mut"]}">Tier 3 — lowest (tier 2 + goal scorers)</div>'
             f'<ul style="margin:4px 0 10px">{goals_html(p["goals"]) or "<li><i>no credible goal scorers</i></li>"}</ul>'
             f'{multi_html(p)}')
+    def grand_cell(label, legs):
+        odds, n, miss = _multi(legs)
+        extra = f' <span style="font-weight:400">+{miss} unpriced</span>' if miss else ""
+        return (f'<td style="padding:6px 18px 6px 0"><div style="color:{C["mut"]};font-size:11px">{label}</div>'
+                f'<div style="font-size:18px;font-weight:700;color:{C["ink"]}">${odds:,.2f}</div>'
+                f'<div style="color:{C["mut"]};font-size:11px">{n} legs{extra}</div></td>')
+    grand = ('<h3 style="margin:26px 0 4px;color:#0c2f6b">Round-wide grand multi '
+             '<span style="font-weight:400;color:#5b6f96;font-size:12px">(all games combined)</span></h3>'
+             f'<table style="border-collapse:collapse"><tr>{grand_cell("Tier 1", all_t1)}'
+             f'{grand_cell("Tier 1+2", all_t2)}{grand_cell("Tier 1+2+3", all_t3)}</tr></table>')
     return (f'<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:640px;'
             f'margin:0 auto;color:{C["ink"]}">'
             f'<h2 style="margin:0 0 2px">PuntersMate — round bet summary</h2>'
             f'<div style="color:{C["mut"]};font-size:12px;margin-bottom:6px">page generated {gen} · '
             f'tiers are cumulative · model edges ignore the bookie margin</div>'
-            f'{"".join(rows)}'
+            f'{"".join(rows)}{grand}'
             f'<div style="color:{C["mut"]};font-size:11px;margin-top:18px">Combined multi prices are the '
             f'fair product of the leg odds. Same-game multi legs are correlated, so Sportsbet\'s actual '
             f'multi price will differ. Not betting advice.</div></div>')
