@@ -107,12 +107,37 @@ def game_picks(g: dict) -> dict:
             if gp is not None:
                 p1 = 1 - math.exp(-gp)              # model anytime: P(>=1 goal)
                 if p1 >= GOAL_CONF:                 # credible scorer
+                    n = math.floor(gp) if gp >= GOAL_NUM_MIN else 1
+                    price = (r.get("od_ladder_G") or {}).get(str(n))
                     goals.append({"player": r["player"], "team": team, "proj": gp,
-                                  "p1": p1, "n": math.floor(gp) if gp >= GOAL_NUM_MIN else 1})
+                                  "p1": p1, "n": n, "price": price})
     t2_add = [v for k, v in ambers.items() if k not in greens]
     goals = sorted(goals, key=lambda x: -x["p1"])[:GOALS_PER_GAME]   # highest anytime % first
     by_edge = lambda L: sorted(L, key=lambda x: -x["edge"])
     return {"t1": by_edge(greens.values()), "t2_add": by_edge(t2_add), "goals": goals}
+
+
+def _multi(bets: list[dict]) -> tuple[float, int, int]:
+    """(combined decimal odds, priced legs, unpriced legs) for a naive multi.
+    The product of leg prices is the *fair* combined price; Sportsbet's actual
+    same-game multi differs (legs are correlated and the book adjusts the price)."""
+    odds, priced, missing = 1.0, 0, 0
+    for b in bets:
+        p = b.get("price")
+        if p:
+            odds *= p
+            priced += 1
+        else:
+            missing += 1
+    return odds, priced, missing
+
+
+def multis(p: dict) -> dict:
+    """Cumulative-tier multi odds: T1, T1+T2, T1+T2+T3 (goals)."""
+    t1 = list(p["t1"])
+    t2 = t1 + list(p["t2_add"])
+    t3 = t2 + list(p["goals"])
+    return {"t1": _multi(t1), "t2": _multi(t2), "t3": _multi(t3)}
 
 
 # ── rendering ─────────────────────────────────────────────────────────────────
@@ -124,7 +149,8 @@ def _leg_txt(b):
 
 def _goal_txt(b):
     line = f"{b['n']}+ goals" if b["proj"] >= GOAL_NUM_MIN else "anytime goal (1+)"
-    return f"{b['player']} ({b['team'][:3].strip()}) — {line}  [{round(b['p1']*100)}% anytime, proj {b['proj']:.1f}]"
+    odds = f" @ ${b['price']:.2f}" if b.get("price") else " @ n/a"
+    return f"{b['player']} ({b['team'][:3].strip()}) — {line}{odds}  [{round(b['p1']*100)}% anytime, proj {b['proj']:.1f}]"
 
 
 def render_text(games, gen) -> str:
@@ -141,7 +167,18 @@ def render_text(games, gen) -> str:
         out.append("  TIER 2 — mid confidence (tier 1 + ambers):")
         out += [f"    • {_leg_txt(b)}" for b in p["t2_add"]] or ["    (no new amber picks)"]
         out.append("  TIER 3 — lowest confidence (tier 2 + goal scorers):")
-        out += [f"    • {_goal_txt(b)}" for b in p["goals"]] or ["    (no 2.0+ goal projections)"]
+        out += [f"    • {_goal_txt(b)}" for b in p["goals"]] or ["    (no credible goal scorers)"]
+        m = multis(p)
+        def mline(label, t):
+            odds, n, miss = t
+            extra = f", {miss} unpriced" if miss else ""
+            return f"    {label}: ${odds:,.2f}  ({n} legs{extra})"
+        out.append("  COMBINED MULTI (fair price = product of legs):")
+        out.append(mline("Tier 1", m["t1"]))
+        out.append(mline("Tier 1+2", m["t2"]))
+        out.append(mline("Tier 1+2+3", m["t3"]))
+    out.append("\nNote: combined prices are the fair product of legs. Same-game multi "
+               "legs are correlated, so Sportsbet's actual multi price will differ.")
     return "\n".join(out)
 
 
@@ -157,11 +194,25 @@ def render_html(games, gen) -> str:
     def goals_html(legs):
         def line(b):
             return f'{b["n"]}+ goals' if b["proj"] >= GOAL_NUM_MIN else "anytime goal (1+)"
+        def odds(b):
+            return f' @ <b>${b["price"]:.2f}</b>' if b.get("price") else ""
         return "".join(
             f'<li><b>{b["player"]}</b> <span style="color:{C["mut"]}">({b["team"][:3].strip()})</span> '
-            f'&mdash; <b>{line(b)}</b> <span style="color:{C["mut"]}">{round(b["p1"]*100)}% anytime · '
+            f'&mdash; <b>{line(b)}</b>{odds(b)} <span style="color:{C["mut"]}">{round(b["p1"]*100)}% anytime · '
             f'proj {b["proj"]:.1f}</span></li>'
             for b in legs)
+    def multi_html(p):
+        m = multis(p)
+        def cell(label, t):
+            odds, n, miss = t
+            extra = f' <span style="color:{C["mut"]};font-weight:400">+{miss} unpriced</span>' if miss else ""
+            return (f'<td style="padding:4px 14px 4px 0"><div style="color:{C["mut"]};font-size:11px">{label}</div>'
+                    f'<div style="font-size:16px;font-weight:700">${odds:,.2f}</div>'
+                    f'<div style="color:{C["mut"]};font-size:11px">{n} legs{extra}</div></td>')
+        return ('<div style="margin:6px 0 4px;font-weight:700;color:#0c2f6b">Combined multi '
+                '<span style="font-weight:400;color:#5b6f96;font-size:12px">(fair = product of legs)</span></div>'
+                f'<table style="border-collapse:collapse"><tr>{cell("Tier 1", m["t1"])}'
+                f'{cell("Tier 1+2", m["t2"])}{cell("Tier 1+2+3", m["t3"])}</tr></table>')
     for g in games:
         if not any("od_ladder" in r for r in g["home_view"] + g["away_view"]):
             continue
@@ -176,13 +227,17 @@ def render_html(games, gen) -> str:
             f'<div style="font-weight:700;color:{C["amber"]}">Tier 2 — mid (tier 1 + ambers)</div>'
             f'<ul style="margin:4px 0 10px">{legs_html(p["t2_add"], C["amber"]) or "<li><i>no new amber picks</i></li>"}</ul>'
             f'<div style="font-weight:700;color:{C["mut"]}">Tier 3 — lowest (tier 2 + goal scorers)</div>'
-            f'<ul style="margin:4px 0 10px">{goals_html(p["goals"]) or "<li><i>no 2.0+ goal projections</i></li>"}</ul>')
+            f'<ul style="margin:4px 0 10px">{goals_html(p["goals"]) or "<li><i>no credible goal scorers</i></li>"}</ul>'
+            f'{multi_html(p)}')
     return (f'<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:640px;'
             f'margin:0 auto;color:{C["ink"]}">'
             f'<h2 style="margin:0 0 2px">PuntersMate — round bet summary</h2>'
             f'<div style="color:{C["mut"]};font-size:12px;margin-bottom:6px">page generated {gen} · '
             f'tiers are cumulative · model edges ignore the bookie margin</div>'
-            f'{"".join(rows)}</div>')
+            f'{"".join(rows)}'
+            f'<div style="color:{C["mut"]};font-size:11px;margin-top:18px">Combined multi prices are the '
+            f'fair product of the leg odds. Same-game multi legs are correlated, so Sportsbet\'s actual '
+            f'multi price will differ. Not betting advice.</div></div>')
 
 
 def main():
