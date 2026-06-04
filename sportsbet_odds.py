@@ -74,6 +74,7 @@ SB2CSV = {
 STAT_MARKET_LABEL = {
     "disposals": "Disposals",
     "fantasy": "Fantasy Points",
+    "goals": "Goal",
     "hit_outs": "Hitouts",
     "tackles": "Tackles",
     "clearances": "Clearances",
@@ -85,6 +86,10 @@ STAT_MARKET_LABEL = {
 
 def _market_re(stat: str) -> re.Pattern:
     """Regex matching this stat's 'N+ <Label>' market titles, capturing N."""
+    if stat == "goals":
+        # Sportsbet labels these "1+ Goal" / "2+ Goals" (singular at 1). Anchor the
+        # end so we don't grab "2+ Goals Combined" / "2+ Goals Every Quarter".
+        return re.compile(r"^(\d+)\+ Goals?$", re.I)
     label = STAT_MARKET_LABEL.get(stat, stat.title())
     return re.compile(rf"^(\d+)\+ {re.escape(label)}\b", re.I)
 

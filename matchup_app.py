@@ -296,6 +296,22 @@ def _attach_odds(records: list[dict], ladder: dict, proj_key: str, sigma_key: st
     return matched
 
 
+def _attach_ladder(records: list[dict], ladder: dict, ladder_key: str) -> int:
+    """Attach just the N+ price ladder (no Normal best-value) -- used for goals,
+    which are modelled Poisson, so the round-email multi can price each goal leg
+    at the bet's line (1+ = anytime, else the projection's whole-goal floor)."""
+    by_csv = {csv: sb for sb, csv in
+              SB.match_players(list(ladder), [r["player"] for r in records]).items()}
+    matched = 0
+    for r in records:
+        sb = by_csv.get(r["player"])
+        if not sb:
+            continue
+        r[ladder_key] = {str(n): p for n, p in sorted(ladder[sb].items())}
+        matched += 1
+    return matched
+
+
 def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEASON,
                 conf: float = M.DEFAULT_CONF, verify: bool = True, odds: bool = False):
     """For each fixture game where both clubs have current-season data, attach
@@ -373,6 +389,7 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
                     eid = ev["id"]
                     d_ladder = SB.stat_ladder(eid, "disposals", odds_scraper)
                     f_ladder = SB.stat_ladder(eid, "fantasy", odds_scraper)
+                    g_ladder = SB.stat_ladder(eid, "goals", odds_scraper)
                     if d_ladder:
                         mh = _attach_odds(home_rec, d_ladder, "D_proj", "D_sigma",
                                           "od_ladder", "od_best")
@@ -389,6 +406,10 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
                         print(f"  odds: {home} v {away} -> fantasy {fh}+{fa} priced")
                     else:
                         print(f"  odds: {home} v {away} -> no fantasy markets yet")
+                    if g_ladder:
+                        gh = _attach_ladder(home_rec, g_ladder, "od_ladder_G")
+                        ga = _attach_ladder(away_rec, g_ladder, "od_ladder_G")
+                        print(f"  odds: {home} v {away} -> goals {gh}+{ga} priced")
             except Exception as e:
                 print(f"  odds pull failed for {home} v {away}: {type(e).__name__}: {e}")
 
