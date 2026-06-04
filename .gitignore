@@ -12,3 +12,7 @@ game*.html
 /apple-touch-icon.png
 # local tooling / preview helpers
 .claude/
+
+# generated round summary artifacts
+round_email.html
+round_email.txt
