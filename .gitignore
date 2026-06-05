@@ -10,9 +10,12 @@ matchups.html
 game*.html
 # home-screen icon is a build artifact at the repo root, but tracked under docs/
 /apple-touch-icon.png
-# local tooling / preview helpers
-.claude/
+# local tooling / preview helpers (launch.json is machine-specific; handoffs + skills are tracked)
+.claude/launch.json
 
 # generated round summary artifacts
 round_email.html
 round_email.txt
+
+# same-day forum/news sentiment cache (rebuilt on demand)
+.sentiment_cache.json
