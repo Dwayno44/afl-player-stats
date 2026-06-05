@@ -1,22 +1,31 @@
 """
-Build a tiered round-bet email summary from the built page (docs/index.html).
+Build a round-bet email from the built page (docs/index.html).
 
 Reads the embedded DATA so the picks match exactly what's shown on the site, then
-distils each imminent game into three cumulative confidence tiers:
+shapes the upcoming games into a punter-facing slate (the default `--format slate`)
+built around how people actually bet -- a result to chase at three grains:
 
-  1. Highest  - every GREEN (edge >= 5%) disposal/fantasy pick. One bet per player:
-                if a player is green in both markets, keep the higher-odds leg.
-  2. Mid      - tier 1 plus AMBER (0-5% edge) picks (players green in neither market
-                but amber in at least one), again the higher-odds leg per player.
-  3. Lowest   - tier 2 plus 1-3 goal scorers per game whose goal projection > 2.0,
-                each shown with the number of goals to back (floor of the projection).
+  THE GAME PLAYS   - one same-game multi per match (up to 4 legs), balanced across
+                     the two teams so most legs are opposing. Opposing legs trade
+                     off (negatively correlated) so the real same-game-multi slip
+                     prices LONGER than the fair product; same-team legs correlate
+                     and price SHORTER. Each play is flagged with that direction.
+  THE DAY MULTIS   - the best leg from each game on a day, combined across games.
+                     Cross-game => independent => the slip should match the product.
+  THE WEEKEND SWING- the best legs across the round into one big-payout multi.
 
-Green/amber is computed with the same floor + EV maths the page uses:
+Monday games (AWST) are excluded by default (--include-monday to keep them); games
+that have already started are dropped. Player edges are GREEN (>= 5%) / AMBER (0-5%),
+computed with the same floor + EV maths the page uses:
   disposal floor = floor(proj - z*sigma), priced at that exact rung;
   fantasy        = the best-edge ladder rung AT OR BELOW the floor (coarse 5-step
                    ladder), model ~ Normal(proj, sigma); edge = model_p*price - 1.
 
-    python round_email.py                      # text summary + writes round_email.html
+The older cumulative-tier view is still available via `--format tiers`.
+
+    python round_email.py                      # slate text + writes round_email.html
+    python round_email.py --include-monday
+    python round_email.py --format tiers       # legacy three-tier view
     python round_email.py --html-only
 """
 import argparse
@@ -33,6 +42,9 @@ GREEN, AMBER = 0.05, 0.0         # edge thresholds (VAL_CLEAR / val-border)
 GOAL_CONF = 0.65                 # credible anytime scorer: P(>=1 goal) >= this (matches the page)
 GOAL_NUM_MIN = 2.0               # only suggest a goal count when proj >= this; below it, imply 1
 GOALS_PER_GAME = 3
+MAX_GAMEPLAY_LEGS = 4            # legs in a per-game same-game multi
+SWING_TARGET = 8                # target legs for the round-wide Weekend Swing
+FILL_MIN = 0.03                 # an amber leg needs >= this edge to fill a Game Play
 _ND = NormalDist()
 _DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 _MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -138,6 +150,121 @@ def multis(p: dict) -> dict:
     t2 = t1 + list(p["t2_add"])
     t3 = t2 + list(p["goals"])
     return {"t1": _multi(t1), "t2": _multi(t2), "t3": _multi(t3)}
+
+
+# ── slate construction (Game Plays / Day Multis / Weekend Swing) ───────────────
+
+def _upcoming(games, include_monday=False, now=None):
+    """Remaining games that have odds and haven't started. Monday games (AWST)
+    are dropped by default, matching the no-Monday multi rule."""
+    now = now if now is not None else datetime.now(timezone.utc).timestamp()
+    out = []
+    for g in games:
+        if not any("od_ladder" in r for r in g["home_view"] + g["away_view"]):
+            continue
+        u = g.get("unixtime")
+        if u and u < now:                       # already started
+            continue
+        if u and not include_monday:
+            if datetime.fromtimestamp(u + 8 * 3600, tz=timezone.utc).weekday() == 0:
+                continue                        # Monday AWST
+        out.append(g)
+    return out
+
+
+def _game_id(b) -> frozenset:
+    """Identify a leg's match by its (team, opponent) pair, order-independent."""
+    return frozenset((b["team"], b["opp"]))
+
+
+def best_leg(g):
+    """Highest-edge priced GREEN for a game, or None."""
+    greens = [b for b in game_picks(g)["t1"] if b.get("price")]
+    return max(greens, key=lambda x: x["edge"]) if greens else None
+
+
+def correlation_note(h: int, a: int) -> str:
+    """Net same-game-multi price direction from the home/away leg split. Cross-team
+    pairs trade off (longer slip); same-team pairs move together (shorter slip)."""
+    cross = h * a
+    same = h * (h - 1) // 2 + a * (a - 1) // 2
+    if cross > same:
+        return "slip should read LONGER than fair (opposing legs trade off)"
+    if same > cross:
+        return "slip should read SHORTER than fair (same-team legs move together)"
+    return "slip should read about fair (mixed correlation)"
+
+
+def game_play(g, max_legs=MAX_GAMEPLAY_LEGS, fill_min=FILL_MIN):
+    """One same-game multi for a game: up to max_legs priced legs, balanced across
+    the two teams (greens first, then value-supported ambers). None if too thin."""
+    p = game_picks(g)
+    pool = [b for b in (list(p["t1"]) + [a for a in p["t2_add"] if a["edge"] >= fill_min])
+            if b.get("price")]
+    if len(pool) < 2:
+        return None
+    home, away = g["home"], g["away"]
+    cap = (max_legs + 1) // 2                    # 2 per team when max_legs == 4
+    by_team = {home: [], away: []}
+    for b in sorted(pool, key=lambda x: -x["edge"]):
+        by_team.setdefault(b["team"], []).append(b)
+    chosen = by_team.get(home, [])[:cap] + by_team.get(away, [])[:cap]
+    if len(chosen) < max_legs:                   # one side thin: fill from the rest
+        rest = [b for b in sorted(pool, key=lambda x: -x["edge"]) if b not in chosen]
+        chosen += rest[:max_legs - len(chosen)]
+    chosen = sorted(chosen[:max_legs], key=lambda x: -x["edge"])
+    h = sum(1 for b in chosen if b["team"] == home)
+    return {"legs": chosen, "fair": _multi(chosen), "h": h, "a": len(chosen) - h,
+            "note": correlation_note(h, len(chosen) - h)}
+
+
+def day_multis(games):
+    """Per-day cross-game multi: the best leg from each game on a day. Only days
+    with >= 2 games (a single-game day is already covered by its Game Play)."""
+    days, order = {}, []
+    for g in games:
+        u = g.get("unixtime")
+        if u:
+            d = datetime.fromtimestamp(u + 8 * 3600, tz=timezone.utc)
+            key, label = d.strftime("%Y-%m-%d"), _DOW[d.weekday()]
+        else:
+            key, label = (g.get("date") or "")[:10], ""
+        if key not in days:
+            days[key] = {"label": label, "games": []}
+            order.append(key)
+        days[key]["games"].append(g)
+    out = []
+    for key in order:
+        gs = days[key]["games"]
+        if len(gs) < 2:
+            continue
+        legs = [b for b in (best_leg(g) for g in gs) if b]
+        if len(legs) >= 2:
+            out.append({"day": days[key]["label"] or key, "legs": legs, "fair": _multi(legs)})
+    return out
+
+
+def weekend_swing(games, target=SWING_TARGET):
+    """Round-wide cross-game multi: best leg per game, then the next-best greens by
+    edge until `target` legs. Flags same-game pairs (they correlate)."""
+    chosen = [b for b in (best_leg(g) for g in games) if b]
+    if len(chosen) < target:
+        extras = []
+        for g in games:
+            greens = sorted([b for b in game_picks(g)["t1"] if b.get("price")],
+                            key=lambda x: -x["edge"])
+            extras += greens[1:]                 # skip each game's best (already in)
+        for b in sorted(extras, key=lambda x: -x["edge"]):
+            if len(chosen) >= target:
+                break
+            chosen.append(b)
+    seen, pairs = {}, []
+    for b in chosen:
+        seen.setdefault(_game_id(b), []).append(b["player"].split(",")[0])
+    for names in seen.values():
+        if len(names) > 1:
+            pairs.append(" + ".join(names))
+    return {"legs": chosen, "fair": _multi(chosen), "pairs": pairs}
 
 
 # ── rendering ─────────────────────────────────────────────────────────────────
@@ -269,10 +396,118 @@ def render_html(games, gen) -> str:
             f'multi price will differ. Not betting advice.</div></div>')
 
 
+# ── slate rendering ────────────────────────────────────────────────────────────
+
+_RG = ("Model output only — not betting advice. Prices were live at build; markets "
+       "move. Set a limit before you start. Gamble responsibly: 1800 858 858 · "
+       "gamblinghelponline.org.au")
+
+
+def render_slate_text(games, gen, include_monday=False) -> str:
+    up = _upcoming(games, include_monday)
+    out = [f"PuntersMate — round slate (page generated {gen})", "=" * 60]
+    out.append("\nTHE GAME PLAYS  —  one same-game multi per match")
+    for g in up:
+        gp = game_play(g)
+        if not gp:
+            continue
+        odds, n, miss = gp["fair"]
+        out.append(f"\n  {g['home']} v {g['away']}  ·  {fmt_awst(g)}")
+        out += [f"    - {_leg_txt(b)}" for b in gp["legs"]]
+        out.append(f"    Fair ${odds:.2f} ({n} legs)  —  {gp['note']}")
+        out.append("    Slip: $______")
+    dms = day_multis(up)
+    if dms:
+        out.append("\n\nTHE DAY MULTIS  —  best leg per game, across the day "
+                   "(cross-game; slip ~ fair)")
+        for dm in dms:
+            odds, n, miss = dm["fair"]
+            out.append(f"\n  {dm['day']}:  fair ${odds:.2f} ({n} legs)")
+            out += [f"    - {_leg_txt(b)}" for b in dm["legs"]]
+    sw = weekend_swing(up)
+    odds, n, miss = sw["fair"]
+    out.append(f"\n\nTHE WEEKEND SWING  —  {n} legs, cross-game  ·  fair ${odds:.2f}")
+    out += [f"    - {_leg_txt(b)}" for b in sw["legs"]]
+    if sw["pairs"]:
+        out.append("    Note: same-game pairs correlate (slip slightly shorter): "
+                   + "; ".join(sw["pairs"]))
+    out.append("\n" + "-" * 60)
+    out.append(_RG)
+    return "\n".join(out)
+
+
+def render_slate_html(games, gen, include_monday=False) -> str:
+    C = {"green": "#1a9e6a", "ink": "#0c2f6b", "mut": "#5b6f96"}
+    up = _upcoming(games, include_monday)
+
+    def leg_li(b):
+        return (f'<li><b>{b["player"]}</b> <span style="color:{C["mut"]}">'
+                f'({b["team"][:3].strip()})</span> &mdash; {b["n"]}+ {b["unit"]} @ '
+                f'<b>${b["price"]:.2f}</b> <span style="color:{C["mut"]};font-size:12px">'
+                f'model {round(b["mp"]*100)}% · +{round(b["edge"]*100)}%</span></li>')
+
+    blocks = []
+    gp_html = []
+    for g in up:
+        gp = game_play(g)
+        if not gp:
+            continue
+        odds, n, miss = gp["fair"]
+        gp_html.append(
+            f'<div style="margin:14px 0 2px;font-weight:700;color:{C["ink"]}">{g["home"]} v {g["away"]}</div>'
+            f'<div style="color:{C["mut"]};font-size:12px">{fmt_awst(g)}</div>'
+            f'<ul style="margin:4px 0 4px">{"".join(leg_li(b) for b in gp["legs"])}</ul>'
+            f'<div style="font-size:13px"><b>Fair ${odds:.2f}</b> '
+            f'<span style="color:{C["mut"]}">({n} legs) &mdash; {gp["note"]}</span></div>')
+    blocks.append(
+        f'<h3 style="margin:20px 0 2px;color:{C["ink"]}">The Game Plays</h3>'
+        f'<div style="color:{C["mut"]};font-size:12px;margin-bottom:2px">One same-game '
+        f'multi per match &mdash; a result to chase all weekend.</div>' + "".join(gp_html))
+
+    dms = day_multis(up)
+    if dms:
+        dm_html = []
+        for dm in dms:
+            odds, n, miss = dm["fair"]
+            dm_html.append(
+                f'<div style="margin:10px 0 2px;font-weight:700;color:{C["ink"]}">{dm["day"]} '
+                f'&mdash; <span style="color:{C["green"]}">${odds:.2f}</span></div>'
+                f'<ul style="margin:2px 0 4px">{"".join(leg_li(b) for b in dm["legs"])}</ul>')
+        blocks.append(
+            f'<h3 style="margin:22px 0 2px;color:{C["ink"]}">The Day Multis</h3>'
+            f'<div style="color:{C["mut"]};font-size:12px;margin-bottom:2px">Best leg per '
+            f'game, across the day. Cross-game &mdash; your slip should match.</div>'
+            + "".join(dm_html))
+
+    sw = weekend_swing(up)
+    odds, n, miss = sw["fair"]
+    pair_note = (f'<div style="color:{C["mut"]};font-size:12px;margin-top:4px">Same-game '
+                 f'pairs pull together (slip slightly shorter): {"; ".join(sw["pairs"])}.</div>'
+                 if sw["pairs"] else "")
+    blocks.append(
+        f'<h3 style="margin:22px 0 2px;color:{C["ink"]}">The Weekend Swing</h3>'
+        f'<div style="color:{C["mut"]};font-size:12px">The big one &mdash; {n} legs across '
+        f'the round, fair <b>${odds:.2f}</b>.</div>'
+        f'<ul style="margin:4px 0 4px">{"".join(leg_li(b) for b in sw["legs"])}</ul>{pair_note}')
+
+    return (f'<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;'
+            f'max-width:640px;margin:0 auto;color:{C["ink"]}">'
+            f'<h2 style="margin:0 0 2px">PuntersMate — round slate</h2>'
+            f'<div style="color:{C["mut"]};font-size:12px;margin-bottom:6px">page generated '
+            f'{gen} · pick the slate that matches your appetite · model edges ignore '
+            f'the bookie margin</div>{"".join(blocks)}'
+            f'<div style="color:{C["mut"]};font-size:11px;margin-top:18px">{_RG}</div></div>')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--page", default="docs/index.html")
     ap.add_argument("--out", default="round_email.html")
+    ap.add_argument("--format", choices=["slate", "tiers"], default="slate",
+                    help="slate = Game Plays / Day Multis / Weekend Swing (default); "
+                         "tiers = legacy cumulative three-tier view")
+    ap.add_argument("--include-monday", action="store_true",
+                    help="keep Monday (AWST) games (excluded by default)")
     ap.add_argument("--html-only", action="store_true")
     args = ap.parse_args()
     try:
@@ -281,9 +516,15 @@ def main():
     except Exception:
         pass
     games, gen = load_games(args.page)
-    Path(args.out).write_text(render_html(games, gen), encoding="utf-8")
+    if args.format == "tiers":
+        Path(args.out).write_text(render_html(games, gen), encoding="utf-8")
+        text = render_text(games, gen)
+    else:
+        Path(args.out).write_text(
+            render_slate_html(games, gen, args.include_monday), encoding="utf-8")
+        text = render_slate_text(games, gen, args.include_monday)
     if not args.html_only:
-        print(render_text(games, gen))
+        print(text)
     print(f"\nWrote {args.out}")
 
 
