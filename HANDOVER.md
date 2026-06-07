@@ -113,6 +113,8 @@ without odds — the default build is unaffected.
 | `afltables.py` | Scraper for afltables.com player stats (uses `cloudscraper` for Cloudflare). CLI: `season`, `player`, `team`, `players`. |
 | `update_stats.py` | Incremental stats refresh (current season's new round) → updates the CSV. `--full` re-scrapes everything. |
 | `backtest.py` | Backtest harness used to tune the projection blend. |
+| `MODEL.md` | **Model development & backtesting record** — architecture, methodology, and every feature experiment to date (Tier-A + the CBA/minutes spike). Read for "what's been tried and what moved MAE". |
+| `exp_*.py`, `probe_cba.py`, `fetch_cba.py` | Experiment scaffolding behind `MODEL.md` (TOG, concession, absence, game-script, CBA oracle). Not part of the build; `matchup.py` is unchanged by them. |
 | `venues.py` | Venue metadata. |
 | `test_parser.py` | 16 offline parser tests. |
 | `games_2022_2026.csv` | The committed stats dataset (2022–2026, player format `"Surname, Given"`). |

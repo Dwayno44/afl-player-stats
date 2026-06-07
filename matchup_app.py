@@ -12,8 +12,10 @@ Usage:
 """
 import argparse
 import json
+import math
 import os
 from datetime import date, datetime
+from statistics import NormalDist
 
 import pandas as pd
 
@@ -21,6 +23,7 @@ import matchup as M
 import fixtures as F
 import lineups as L
 import sportsbet_odds as SB
+import forum_sentiment as FS
 
 ICON_SVG = "punters-mate-icon.svg"      # vector favicon / logo (shipped as-is)
 APPLE_ICON = "apple-touch-icon.png"     # iOS home screen (180)
@@ -425,6 +428,74 @@ def build_games(df: pd.DataFrame, fixture: list[dict], year: int = M.CURRENT_SEA
     return games, skipped
 
 
+def _floor_tinted(proj, sigma, ladder, conf) -> bool:
+    """True if a player's disposal/fantasy FLOOR cell carries betting value
+    (amber or green), mirroring the page's in-browser tint: floor = proj - z*sigma,
+    edge at the floor rung = P(>=floor)*price - 1 >= 0. This catches marginal amber
+    picks the `od_best` lean (>=5% edge) misses -- e.g. a +2% floor cell -- so every
+    tinted pick on the page gets an availability read, not just the strong leans."""
+    if not ladder or not sigma or proj is None:
+        return False
+    z = NormalDist().inv_cdf(conf)
+    floor = max(0, math.floor(proj - z * sigma))
+    price = ladder.get(str(floor))
+    if price is None:
+        return False
+    return NormalDist().cdf((proj - floor) / sigma) * price - 1 >= 0
+
+
+def _is_value_pick(r: dict, conf: float) -> bool:
+    """A pick worth a context read: a >=5% value lean (od_best/od_best_F) OR a
+    floor cell tinted amber/green on disposals or fantasy."""
+    return bool(r.get("od_best") or r.get("od_best_F")
+                or _floor_tinted(r.get("D_proj"), r.get("D_sigma"), r.get("od_ladder"), conf)
+                or _floor_tinted(r.get("F_proj"), r.get("F_sigma"), r.get("od_ladder_F"), conf))
+
+
+def attach_sentiment(games: list[dict], conf: float = M.DEFAULT_CONF) -> int:
+    """Attach recent forum/news sentiment to the VALUE players in each game.
+
+    A "value player" is any pick the page tints: a >=5% value lean (`od_best` /
+    `od_best_F`) OR a floor cell tinted amber/green at `conf` (see _is_value_pick).
+    Scoping to tinted picks keeps the network cost small while covering every pick
+    a punter might actually back. Each gets an `r['sentiment']` dict (see
+    forum_sentiment.player_sentiment). One shared scraper + same-day disk cache for
+    the whole build; any per-player failure is non-fatal. Returns the count read.
+
+    Requires VADER (vaderSentiment); if it isn't installed we skip with a note so
+    a missing optional dep never breaks the page build."""
+    if FS._analyzer() is None:
+        print("  sentiment: vaderSentiment not installed -- skipping (pip install vaderSentiment)")
+        return 0
+    scraper = FS.make_scraper()
+    cache = FS._load_cache()
+    today = str(date.today())
+    done = 0
+    for g in games:
+        try:
+            rnd = int(g["round"])
+        except (TypeError, ValueError):
+            rnd = None
+        # Each side's opponent anchors the forward-looking fetch on THIS game.
+        for side, opp in (("home_view", g["away"]), ("away_view", g["home"])):
+            for r in g[side]:
+                if not _is_value_pick(r, conf):
+                    continue
+                try:
+                    s = FS.cached_player_sentiment(r["player"], opponent=opp,
+                                                   round_no=rnd, scraper=scraper,
+                                                   cache=cache, today=today)
+                except Exception as e:
+                    print(f"  sentiment: {r['player']} failed ({type(e).__name__}: {e})")
+                    s = None
+                if s:
+                    r["sentiment"] = s
+                    done += 1
+    FS._save_cache(cache)
+    print(f"  sentiment: {done} value players given a forward-looking read")
+    return done
+
+
 # ── HTML shell (mobile-first; data injected as JSON, rendered in JS) ────────────
 
 _CSS = """
@@ -524,6 +595,30 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .stat.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
 .stat.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
 .na{color:var(--mut)}
+/* Forum/news sentiment strip on a value player: tone chip + availability warning
+   + a few linked headlines. Context only — never a probability input. */
+.senti{margin-top:11px;border-top:1px dashed var(--line);padding-top:9px;font-size:11.5px}
+.senti-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.senti-tone{font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;
+            padding:2px 8px;border-radius:99px}
+.senti-tone.bull{color:var(--good);background:rgba(26,158,106,.12);border:1px solid rgba(26,158,106,.4)}
+.senti-tone.bear{color:var(--away);background:rgba(224,97,47,.12);border:1px solid rgba(224,97,47,.4)}
+.senti-tone.neu{color:var(--mut);background:var(--inset);border:1px solid var(--line)}
+.senti-warn{font-weight:700;color:var(--away);background:rgba(224,97,47,.12);
+            border:1px solid rgba(224,97,47,.45);border-radius:99px;padding:2px 8px;font-size:9.5px;
+            text-transform:uppercase;letter-spacing:.04em}
+.senti-meta{color:var(--mut);font-variant-numeric:tabular-nums}
+.senti-items{list-style:none;margin:8px 0 0;padding:0}
+.senti-items li{margin:5px 0;line-height:1.4;color:var(--mut)}
+.senti-items a{color:var(--ink);text-decoration:none}
+.senti-items a:hover{text-decoration:underline;color:var(--disp)}
+.senti-src{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+           color:var(--mut);margin-right:6px}
+.senti-item.risk .senti-src{color:var(--away)}
+.senti-vs{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+          color:var(--disp);background:rgba(26,99,220,.1);border-radius:99px;
+          padding:1px 5px;margin-right:6px}
+.senti-when{color:var(--mut);font-size:10px;margin-left:6px;font-variant-numeric:tabular-nums}
 /* collapsible reference panels (betting strategy + method): one shared type
    scale — 12.5px/1.55 body, 13px heads, 20px list indent, 6px between items */
 .strategy{background:var(--inset);border:1px solid var(--line);border-radius:16px;margin-top:16px}
@@ -616,6 +711,34 @@ function fmtDate(g){
 function f1(v){ return v === null ? DASH : v.toFixed(1); }
 function f0(v){ return v === null ? DASH : Math.round(v).toString(); }
 function pctCls(p){ return p > HOT ? 'elite' : (p >= GCONF ? 'hi' : (p >= 50 ? 'mid' : 'lo')); }
+// Escape forum/news text before injecting it (titles are third-party strings).
+function esc(s){ return (s||'').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// Forum/news sentiment strip for a value player: a tone chip, an availability
+// warning when injury/selection words appear, then a few linked headlines. This
+// is qualitative context for a pick the model already flagged -- never a number
+// that feeds the floor or the edge.
+function sentiHtml(r){
+  const s = r.sentiment;
+  if (!s) return '';
+  const tone = s.label === 'bullish' ? 'bull' : (s.label === 'bearish' ? 'bear' : 'neu');
+  const srcBits = Object.keys(s.by_source).map(k => s.by_source[k] + ' ' + k).join(DOT);
+  let head = '<div class="senti-head">'+
+    '<span class="senti-tone ' + tone + '">' + s.label + '</span>'+
+    (s.availability ? '<span class="senti-warn">\\u26a0 availability</span>' : '')+
+    '<span class="senti-meta">' + s.n + ' mention' + (s.n === 1 ? '' : 's') +
+    DOT + srcBits + '</span></div>';
+  let items = '<ul class="senti-items">';
+  s.items.forEach(it => {
+    items += '<li class="senti-item' + (it.risk ? ' risk' : '') + '">'+
+      '<span class="senti-src">' + it.source + '</span>'+
+      (it.opp ? '<span class="senti-vs">vs</span>' : '')+
+      '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.title) + '</a>'+
+      (it.when ? '<span class="senti-when">' + esc(it.when) + '</span>' : '') + '</li>';
+  });
+  items += '</ul>';
+  return '<div class="senti">' + head + items + '</div>';
+}
 
 // Standard normal CDF (Abramowitz & Stegun 7.1.26) so the page can put the
 // model's probability on the Sportsbet price at whatever floor the dial picks.
@@ -759,7 +882,7 @@ function teamCard(side, team, opp, view, named){
       '<div class="pname">' + r.player + '</div>'+
       '<div class="pmeta">' + r.GP + ' GP \\u00b7 ' + r.R_n + 'g</div></div>'+
       '<div class="stats">' + dispStat(r, o3, dmax) + fanStat(r, o3, fmax) +
-      goalStrip(r, o3) + '</div></div>';
+      goalStrip(r, o3) + '</div>' + sentiHtml(r) + '</div>';
   });
   return '<div class="card ' + side + '">' + head + rows + '</div>';
 }
@@ -845,12 +968,21 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 
     has_odds = any("od_ladder" in r for g in games
                    for r in g["home_view"] + g["away_view"])
+    has_senti = any("sentiment" in r for g in games
+                    for r in g["home_view"] + g["away_view"])
 
     # When odds are present, explain the green/amber tint that replaced the old dial.
     value_legend = (
         '<span><b class="vlg clear">green</b> / <b class="vlg border">amber</b> disposal or fantasy '
         'cell &mdash; clear / borderline betting value vs the Sportsbet price</span>'
     ) if has_odds else ''
+    senti_legend = (
+        '<span><b>buzz</b> on a value player &mdash; <b>forward-looking</b> chatter about <i>this</i> '
+        'game (previews, selection, role/fitness), not last-round recaps. Shows tone '
+        '(<b style="color:var(--good)">bullish</b>/<b style="color:var(--away)">bearish</b>), an '
+        '<b style="color:var(--away)">&#9888; availability</b> flag on injury/selection words, and a '
+        '<b>vs</b> marker on items naming the opponent. Context, not a number in the model.</span>'
+    ) if has_senti else ''
     legend_items = (
         f'<span><b>min</b> disposal floor &mdash; projection minus the {cpc}% margin of safety</span>'
         f'<span><b>min pts</b> AFL Fantasy floor &mdash; same {cpc}% margin of safety</span>'
@@ -858,6 +990,7 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
         '<span><b>1+ rate</b> supporting: share of recent games with a goal</span>'
         '<span><b>proj</b> blended projection</span>'
         f'{value_legend}'
+        f'{senti_legend}'
     )
 
     # Folded-in betting insight from the singles-vs-multi break-even analysis.
@@ -996,8 +1129,19 @@ def main():
     ap.add_argument("--insecure", action="store_true",
                     help="disable SSL verification (corporate networks)")
     ap.add_argument("--odds", action="store_true",
-                    help="pull Sportsbet disposal odds and flag value (AU IP only; off by default)")
+                    help="pull Sportsbet odds, flag value, and attach forum/news sentiment "
+                         "to each value pick (AU IP only; off by default)")
+    ap.add_argument("--no-sentiment", action="store_true",
+                    help="skip the forum/news sentiment pass on a --odds build (faster; no network for chatter)")
+    # Deprecated: sentiment now runs with --odds by default. Kept so old commands
+    # (and the documented --sentiment) still work -- it just ensures --odds is on.
+    ap.add_argument("--sentiment", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
+
+    # Value players are identified by the odds pass, so sentiment needs odds on.
+    if args.sentiment and not args.odds:
+        print("--sentiment enables --odds (value players come from the odds pass)")
+        args.odds = True
 
     df = M.load(args.csv)
 
@@ -1017,6 +1161,10 @@ def main():
 
     games, skipped = build_games(df, fixture, args.year, args.conf,
                                  verify=not args.insecure, odds=args.odds)
+    # Sentiment runs on every odds build (value picks come from the odds pass);
+    # --no-sentiment opts out for a faster, network-light build.
+    if args.odds and not args.no_sentiment:
+        attach_sentiment(games, args.conf)
     to_html(games, skipped, args.out, args.csv, args.conf)
 
 

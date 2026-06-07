@@ -19,3 +19,11 @@ round_email.txt
 
 # same-day forum/news sentiment cache (rebuilt on demand)
 .sentiment_cache.json
+
+# spike: cached AFL API match JSON (regenerable via fetch_cba.py;
+# the derived cba_games.csv is already covered by the *.csv rule above)
+cba_cache/
+
+# the per-round scorecard log IS tracked (a standing record across rounds),
+# overriding the blanket *.csv ignore above
+!scorecard_log.csv

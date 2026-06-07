@@ -1,0 +1,2 @@
+ts,year,round,games_concluded,games_total,complete,overall_n,overall_hit,overall_mae,overall_bias,shown_n,shown_hit,shown_mae,shown_bias,value_n,value_hit,value_mae,value_bias,value_win,value_roi,value_profit
+2026-06-06T14:55:54+00:00,2026,13,4,7,False,173,0.8613,3.419,-0.429,90,0.8778,3.76,-0.4,34,0.7353,3.891,-1.962,0.7353,-0.1144,-3.89
