@@ -204,20 +204,67 @@ def show_log():
         print("no complete rounds logged yet (in-progress rounds aren't counted)")
 
 
+def current_round(year):
+    """The active round = lowest round number with a game not yet CONCLUDED.
+    Lets a weekly job run `--round current` without hard-coding the number."""
+    token = L.get_token(verify=True)
+    cid = L.compseason_id(year, token, True)
+    for rnd in range(1, 30):
+        ms = L._matches(cid, rnd, token, True)
+        if not ms:
+            continue
+        if any(m.get("status") != "CONCLUDED" for m in ms):
+            return rnd
+    return None
+
+
+def _resolve_round(value, year):
+    return current_round(year) if str(value).lower() == "current" else int(value)
+
+
+def grade_pending(year):
+    """Grade every snapshotted round that has concluded games and isn't already
+    finalized (complete=True) in the log. Safe to run weekly: it advances each
+    round to complete as its last game finishes, and skips finished rounds."""
+    import glob
+    done = set()
+    if os.path.exists(LOG):
+        df = pd.read_csv(LOG)
+        done = {int(r) for r in df[df["complete"]]["round"].unique()}
+    files = sorted(glob.glob(SNAP.format(year=year, rnd="*").replace("R*", "R*")))
+    snapped = sorted(int(re.search(r"_R(\d+)\.json$", f).group(1)) for f in files
+                     if re.search(r"_R(\d+)\.json$", f))
+    todo = [r for r in snapped if r not in done]
+    if not todo:
+        print("no pending rounds to grade (all snapshotted rounds finalized)")
+        return
+    for rnd in todo:
+        try:
+            grade(year, rnd, append=True)
+        except Exception as e:
+            print(f"  round {rnd}: grade failed ({type(e).__name__}: {e})")
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("snapshot", "grade"):
-        s = sub.add_parser(name); s.add_argument("--round", type=int, required=True)
+        s = sub.add_parser(name)
+        # accepts an int or the literal "current" (resolved from the live fixture)
+        s.add_argument("--round", required=True)
         s.add_argument("--year", type=int, default=2026)
         s.add_argument("--html", default="docs/index.html")
         s.add_argument("--no-log", action="store_true")
+    p = sub.add_parser("pending", help="grade all snapshotted-but-unfinished rounds")
+    p.add_argument("--year", type=int, default=2026)
     sub.add_parser("log")
     a = ap.parse_args()
     if a.cmd == "snapshot":
-        snapshot(a.html, a.year, a.round)
+        snapshot(a.html, a.year, _resolve_round(a.round, a.year))
     elif a.cmd == "grade":
-        grade(a.year, a.round, append=not a.no_log)
+        grade(a.year, _resolve_round(a.round, a.year), append=not a.no_log)
+    elif a.cmd == "pending":
+        grade_pending(a.year)
     elif a.cmd == "log":
         show_log()
 

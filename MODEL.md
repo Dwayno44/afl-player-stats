@@ -211,3 +211,41 @@ These experiment scripts are **scaffolding, not part of the build**; `matchup.py
 and the shipped page are unchanged by any of the above. The TOG oracle in
 `exp_oracle.py` is the **benchmark to beat** — when a minutes/sub signal is wired
 in, that ~9% is the target.
+
+---
+
+## 7. Product position — what this is, and what it is NOT
+
+State this plainly so the dead ends aren't re-walked and the tool isn't mis-sold.
+
+**It is NOT an edge engine.** The model uses lagged public box-score data — a
+*strict subset* of what Sportsbet's disposal line already contains (form + team
+news + role + money). You cannot systematically beat a sharper participant with a
+subset of their information. The evidence is not just "no edge": the value tints'
+edge is **negatively** correlated with outcome (R13: edge↔return ≈ −0.20; the
+>12% "edge" bucket went 50% / −36% ROI). That is adverse selection — when our
+apparent edge is biggest, it's usually because the line moved on information we
+lack (Gunston→Hardwick, Durham→Kondogiannis). Scaling up makes it worse, not
+better. **Do not market the value tints as +EV.** Every brainstormed lever to
+close the gap was tested and failed (see §4): the box score is tapped out, and the
+one real signal (minutes/sub) is the thing the market prices fastest.
+
+**The floor IS well-calibrated, but calibration ≠ edge.** The disposal floor lands
+~85% as designed (R13: 87.8% vs 85% target). That's genuinely useful — but it's
+calibrated *to* an efficient market, not *against* it. An 85%-floor at a ~1.18
+price is break-even before vig. Useful as a confidence input, not a money-maker.
+
+**What it honestly is:** a useful *input* for recreational punters who are going to
+place multis anyway — clean projections, a calibrated "minimum", form, team news
+and forum/news sentiment with availability flags, in one place. Value is
+convenience and confidence, not proven ROI. A legitimate product, but an
+*engagement* business, not an *edge* business.
+
+**Ongoing validation (the adjudicator).** Rather than argue from theory, the
+`scorecard.py` harness accumulates real per-round results: predictions are
+snapshotted pre-round and graded against AFL API actuals, one row per round in
+`scorecard_log.csv`. Automated weekly (snapshot Fri, grade Mon). **Decision rule:**
+if value-pick ROI stays flat-to-negative across ~a month (~200–300 bets) — the
+predicted outcome — the no-edge conclusion is confirmed and no paid edge product
+should be built. A persistent positive ROI in a specific slice would be the only
+evidence-backed reason to revisit. `scorecard.py log` shows the running tally.
