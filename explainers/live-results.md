@@ -1,0 +1,57 @@
+# Live results: are the "value" picks actually any good?
+
+This is the honesty page. Talk is cheap, so every round the tool records its own
+disposal **floors** and **value picks** *before* the games are played, then grades
+them *after* against what actually happened — automatically, with no cherry-picking.
+Over a month or so it builds into a real track record.
+
+We're testing two separate claims, and it's important not to confuse them:
+
+1. **Is the floor honest?** The floor is meant to hold about **85%** of the time. If
+   the "shown" floor-hit rate sits near 85%, the conservative-minimum promise is
+   sound. *(This one we expect to pass.)*
+2. **Do the value tints beat the market?** This is the betting claim. We measure the
+   return on backing every green/amber pick at the offered price. *(This one we
+   expect to **fail** — flat-to-negative — for all the reasons in
+   [what-we-tested.md](what-we-tested.md). We'd rather prove it than hide it.)*
+
+## How to read the table
+
+- **Floor-hit** — share of "shown" picks (floor of 10+) where the player cleared
+  their floor. Target ≈ 85%.
+- **Value ROI** — profit/loss from backing each value pick one unit at its price.
+  Above 0% would be a (surprising) edge; at or below 0% is the expected result.
+- **Picks** — how many value picks that round, so you can see the sample growing.
+
+## The running scorecard
+
+*(Auto-graded from the weekly run. A round only counts as "final" once all its games
+are played.)*
+
+| Round | Games | Floor-hit (shown) | Value picks | Value ROI |
+|------:|:-----:|:-----------------:|:-----------:|:---------:|
+| R13   | 5 of 7 *(in progress)* | 87.8% | 47 | −5.4% |
+| **Running total** | — | **~88%** | **47** | **−5.4%** |
+
+*Last updated: R13 in progress (snapshot of partial results). Figures finalise once
+the round completes and will be revised here.*
+
+## What we expect this to show
+
+If the next month looks like the early signs:
+
+- the **floor keeps landing near 85%** — the tool is honestly calibrated, and the
+  "minimum" you see is a fair one; and
+- the **value ROI stays around or below zero** — confirming, with real money-weighted
+  results, that the value tints are a *helpful framing*, not a profit edge.
+
+If instead a genuine, repeatable edge shows up — say the value picks run clearly
+positive over a few hundred bets — that would be the one result worth getting excited
+about, and we'd dig into exactly which picks are driving it. We're not expecting it.
+But the whole point of doing this in the open is that the numbers, not our opinions,
+get the final say.
+
+---
+
+*Gamble responsibly. Past results — good or bad — don't predict future ones. Nothing
+here is a tip or a guarantee. Gambling Help: 1800 858 858 (Australia).*
