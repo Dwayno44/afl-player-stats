@@ -27,3 +27,6 @@ cba_cache/
 # the per-round scorecard log IS tracked (a standing record across rounds),
 # overriding the blanket *.csv ignore above
 !scorecard_log.csv
+
+# match-metadata cache for the combined-model test (regenerable via exp_joint.py)
+env_meta.json

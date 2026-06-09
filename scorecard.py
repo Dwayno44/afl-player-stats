@@ -66,7 +66,13 @@ def snapshot(html, year, rnd):
                 rows.append({"game": f"{g['home']} v {g['away']}", "team": g[side],
                              "opp": g[opp], "player": r["player"], "proj": proj,
                              "sigma": sigma, "floor": fl, "shown": fl >= FLOOR_MIN,
-                             "tint": cls, "price": price})
+                             "tint": cls, "price": price,
+                             # fantasy fields — for the forward fantasy-prop validation
+                             # (blend vs LightGBM shadow). od_ladder_F is the Sportsbet
+                             # fantasy-points ladder; gone once the round concludes, so
+                             # we must capture it pre-game here.
+                             "f_proj": r.get("F_proj"), "f_sigma": r.get("F_sigma"),
+                             "f_ladder": r.get("od_ladder_F")})
     path = SNAP.format(year=year, rnd=rnd)
     json.dump({"built": data.get("generated"), "year": year, "round": rnd, "rows": rows},
               open(path, "w", encoding="utf-8"))
