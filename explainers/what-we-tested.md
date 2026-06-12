@@ -105,6 +105,13 @@ A whole family of signals that feel like they *should* matter, each tested in tu
 The verdict across the whole family was the same: real-sounding, occasionally true
 as *context*, but not an *edge* once the player's own form and role are in the model.
 
+- **Weather.** The last family standing — untested for months purely for lack of a
+  data source, until we pulled hourly rain/wind/temperature for every venue and all
+  ~1,900 games from a free historical archive. The folklore is half-right: wet games
+  really do kill **marks** (about 12% fewer). But total **disposals barely move** in
+  the wet, and at the player level no weather measure improved a single projection —
+  rain games are too rare, and the effect per player too small, to matter.
+
 ### Across four different markets
 We didn't just do this for disposals. We modelled and floor-calibrated **goals**,
 **AFL fantasy** and **hit-outs** as well — including a dedicated ruck/hit-out value

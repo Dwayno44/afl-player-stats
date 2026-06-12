@@ -30,3 +30,6 @@ cba_cache/
 
 # match-metadata cache for the combined-model test (regenerable via exp_joint.py)
 env_meta.json
+
+# hourly per-venue weather archive for exp_weather.py (regenerable from Open-Meteo)
+weather_cache/

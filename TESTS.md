@@ -32,8 +32,9 @@ even a full ML model can't beat it). For **fantasy**, a LightGBM ensemble is a r
 replicable **~2.6%** improvement (≈1.1% non-linear form + ≈1.4% combined context) —
 the first thing in the whole program to beat the baseline, and it **requires the
 model** (no free linear re-weight). The user's "combine the levers" hypothesis,
-vindicated for fantasy. (Weather is the one family still untested in combination —
-no data source.)
+vindicated for fantasy. (Weather, since tested individually via Open-Meteo — null,
+see Conditions — remains untested *in combination*, but its individual nulls leave
+little to combine.)
 
 ## Foundational model & calibration
 | Signal / choice | Verdict | Finding | Evidence |
@@ -86,10 +87,10 @@ Blanket recollection: all tested individually, each found **noise or secondary**
 > ~1.4% context bundle) for fantasy. So "noise/secondary individually" holds up
 > **even in combination**.
 
-## Conditions  *(need confirming / may be untested)*
+## Conditions
 | Signal | Verdict | Finding |
 |---|:--:|---|
-| Weather / wind / roof | ⚠️ | _to confirm — tested?_ |
+| **Weather** — in-game rain, prior-6h rain, wind, temperature (Open-Meteo archive, 1,934 games 2022–26, 96% coverage) | ✅ | **Null for projections.** The mechanism is real at league level — wet (2mm+) games cut team marks ~12% (92.6 → 81.7) — but total disposals barely move (358.1 dry vs 357.8 wet), and at player level every weather term has residual corr ≤ +0.011 and OOS gain +0.0% for disposals *and* fantasy (wet games are only ~3.5% of the sample; ~1.5 fantasy pts/player effect vs σ≈22 is undetectable). `exp_weather.py`; hourly per-venue cache in `weather_cache/`. |
 | Umpire / free-kick tendencies | ⚠️ | _to confirm — tested?_ |
 
 ## The betting side

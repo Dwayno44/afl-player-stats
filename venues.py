@@ -61,10 +61,15 @@ def game_lookup(years, verify: bool = False) -> dict:
             venue = g["venue"]
             vs = VENUE_STATE.get(venue)
             home, away = g["home"], g["away"]
+            # unixtime (UTC epoch of the bounce) rides along so downstream users
+            # (e.g. the weather backtest) can locate the game in time as well as space.
+            ut = g.get("unixtime")
             lut[(int(yr), home)].append(
-                {"opponent": away, "venue": venue, "venue_state": vs, "is_home": True})
+                {"opponent": away, "venue": venue, "venue_state": vs, "is_home": True,
+                 "unixtime": ut})
             lut[(int(yr), away)].append(
-                {"opponent": home, "venue": venue, "venue_state": vs, "is_home": False})
+                {"opponent": home, "venue": venue, "venue_state": vs, "is_home": False,
+                 "unixtime": ut})
     return dict(lut)
 
 
