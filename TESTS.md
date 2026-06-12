@@ -58,6 +58,7 @@ no data source.)
 | Opponent concession (team, league-debiased) | ✅ | Can't beat the existing H2H term | `exp_concession.py` |
 | Opponent concession by role | ✅ | *Worse* than team-level (slices too thin) | `exp_concession.py` |
 | Disposals-against recent trend (team total) | ✅ | ~0% (corr +0.003) | `exp_team_da.py` |
+| Disposals-against **by line** (back/mid/fwd) as a selection tilt | ✅ | Teams have **no persistent** concede-to-line trait (lag-1 autocorr ±0.04 ≈ noise), so it can't be a stable pick signal. Residual corr +0.033; softest-line bucket cleared floors 88.1% vs 85.2% toughest — a faint lean, not an edge. *(Run 2026-06-12; the 72560c2 commit message pre-stated this verdict before the run — verified correct.)* | `exp_line_da.py` |
 | Disposals-against **by line** (back/mid/fwd) — incl. as a *selection* tilt, not just projection | ✅ | Noise. Concede-to-line **doesn't persist** round-to-round (lag-1 autocorr +0.04/−0.04/+0.00), residual corr +0.03, and the softest-line bucket clears only ~3pts more than the toughest *non-monotonically*. Concession doesn't concentrate persistently by line. | `exp_line_da.py` |
 | Pressure / contest stats (pressure acts, contested rate, hitout-to-adv) | 🟡 | Pulled from official feed; no signal beyond form in the oracle decomposition | `fetch_cba.py`, `exp_oracle.py` |
 
@@ -94,6 +95,7 @@ Blanket recollection: all tested individually, each found **noise or secondary**
 ## The betting side
 | Test | Verdict | Finding | Evidence |
 |---|:--:|---|---|
+| **Market line as a projection INPUT** (blend toward the Sportsbet ladder's implied median) | ✅ | The first *disposal* MAE gain in the program: on R13 (294 priced players, ladders from git history) a 50/50 blend of our projection + vig-adjusted market median beat both alone — **3.40 vs our 3.47 (−2.1%)**. Market alone does *not* beat us (3.57; raw vig-inflated 3.86). One round — snapshots now capture `d_ladder` so this validates forward each week. Tension to manage: market-anchored floors shrink the value tints toward zero by construction. | `exp_market.py` |
 | Disposal value tinting vs Sportsbet ladder | ➖ | Built into the page | `sportsbet_odds.py`, `matchup_app.py` |
 | Goals / fantasy / hit-out value ladders | ➖ | Built | `matchup_app.py`, `hitouts_value.py` |
 | Line drift / stale prices | ✅ | Biggest "edges" are worst bets (Hardwick $1.67→$1.90) | live analysis |

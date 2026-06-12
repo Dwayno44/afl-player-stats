@@ -72,7 +72,11 @@ def snapshot(html, year, rnd):
                              # fantasy-points ladder; gone once the round concludes, so
                              # we must capture it pre-game here.
                              "f_proj": r.get("F_proj"), "f_sigma": r.get("F_sigma"),
-                             "f_ladder": r.get("od_ladder_F")})
+                             "f_ladder": r.get("od_ladder_F"),
+                             # full disposal ladder — for the market-as-input
+                             # validation (exp_market.py): blending our projection
+                             # toward the market-implied median cut MAE ~2% on R13.
+                             "d_ladder": r.get("od_ladder")})
     path = SNAP.format(year=year, rnd=rnd)
     json.dump({"built": data.get("generated"), "year": year, "round": rnd, "rows": rows},
               open(path, "w", encoding="utf-8"))
