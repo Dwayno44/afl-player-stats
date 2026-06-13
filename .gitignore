@@ -33,3 +33,7 @@ env_meta.json
 
 # hourly per-venue weather archive for exp_weather.py (regenerable from Open-Meteo)
 weather_cache/
+
+# point-in-time Sportsbet ladder captures (exp_drift.py log) — local time series,
+# NOT regenerable; backed up via OneDrive, kept out of git to avoid churn
+odds_log.jsonl
