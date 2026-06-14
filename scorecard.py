@@ -92,6 +92,10 @@ def api_actuals(year, rnd):
     h = {"User-Agent": L.UA, "x-media-mis-token": token}
     out, played = {}, set()
     for m in L._matches(cid, rnd, token, True):
+        # Only FINAL games. A LIVE game has partial player stats; counting its
+        # mid-game disposals as final would fail every floor and corrupt the round.
+        if m.get("status") != "CONCLUDED":
+            continue
         home = L.AFL2CSV.get(m["home"]["team"]["name"], m["home"]["team"]["name"])
         away = L.AFL2CSV.get(m["away"]["team"]["name"], m["away"]["team"]["name"])
         js = requests.get(PSTATS.format(m["providerId"]), headers=h, timeout=30, verify=True).json()
