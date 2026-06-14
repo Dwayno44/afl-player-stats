@@ -602,6 +602,7 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .headsup .a{color:var(--mid);font-weight:700}
 .headsup .tip{display:block;margin-top:7px;padding-top:7px;border-top:1px solid var(--line);color:var(--mut)}
 .headsup .tip b{color:var(--ink)}
+.headsup a{color:var(--brand);font-weight:700;white-space:nowrap}
 .na{color:var(--mut)}
 /* Forum/news sentiment strip on a value player: tone chip + availability warning
    + a few linked headlines. Context only — never a probability input. */
@@ -1122,7 +1123,8 @@ a big &ldquo;edge&rdquo; usually means we&rsquo;re missing late info. In our wee
 two-thirds of the time, versus roughly nine in ten for <span class="a">amber</span>.
 <span class="tip"><b>Simple fix:</b> favour <span class="a">amber</span> over <span class="g">green</span>.
 &nbsp;<b>Best results so far:</b> <span class="a">amber</span> + un-highlighted picks &mdash; the most
-reliable, though at shorter odds (lower returns). Biggest edge &ne; safest bet.</span>
+reliable, though at shorter odds (lower returns). Biggest edge &ne; safest bet.
+&nbsp;<a href="results.html">See how we&rsquo;ve done &rarr;</a></span>
 </div>
 <div class="games" id="out"></div>
 {strategy}
