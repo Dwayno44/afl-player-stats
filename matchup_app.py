@@ -594,6 +594,14 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 /* priced cells (disposals, fantasy) tinted by betting value at the floor: clear (green) / borderline (amber) */
 .stat.val-clear{border-color:rgba(26,158,106,.5);background:rgba(26,158,106,.1)}
 .stat.val-border{border-color:rgba(192,137,15,.5);background:rgba(192,137,15,.13)}
+/* heads-up banner: greens are the model's biggest edge but historically the least reliable */
+.headsup{background:var(--inset);border:1px solid var(--line);border-left:4px solid var(--mid);
+         border-radius:12px;padding:12px 15px;margin:0 0 18px;font-size:12.7px;line-height:1.55;color:var(--ink)}
+.headsup .h{display:block;font-weight:800;margin-bottom:3px;letter-spacing:.01em}
+.headsup .g{color:var(--good);font-weight:700}
+.headsup .a{color:var(--mid);font-weight:700}
+.headsup .tip{display:block;margin-top:7px;padding-top:7px;border-top:1px solid var(--line);color:var(--mut)}
+.headsup .tip b{color:var(--ink)}
 .na{color:var(--mut)}
 /* Forum/news sentiment strip on a value player: tone chip + availability warning
    + a few linked headlines. Context only — never a probability input. */
@@ -1105,6 +1113,17 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 <header class="top"><div class="brand">{_HEADER_MARK}<h1 class="wordmark">Punters<span>Mate</span></h1></div>
 <select id="game" aria-label="Select match"></select>
 <p class="meta" id="meta"></p></header>
+<div class="headsup">
+<span class="h">&#9888; Don&rsquo;t bet the <span class="g">greens</span> only</span>
+A <span class="g">green</span> cell is where our model sees the most value &mdash; but that&rsquo;s
+also where the market is most likely to know something we don&rsquo;t. It&rsquo;s not bad luck:
+a big &ldquo;edge&rdquo; usually means we&rsquo;re missing late info. In our weekly tracking so far the
+<span class="g">green</span> picks have cleared their floor the <b>least</b> often &mdash; around
+two-thirds of the time, versus roughly nine in ten for <span class="a">amber</span>.
+<span class="tip"><b>Simple fix:</b> favour <span class="a">amber</span> over <span class="g">green</span>.
+&nbsp;<b>Best results so far:</b> <span class="a">amber</span> + un-highlighted picks &mdash; the most
+reliable, though at shorter odds (lower returns). Biggest edge &ne; safest bet.</span>
+</div>
 <div class="games" id="out"></div>
 {strategy}
 {notes}
