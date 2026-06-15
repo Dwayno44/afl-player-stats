@@ -163,8 +163,8 @@ table.t{{width:100%;border-collapse:collapse;font-size:13.5px}}
 
 <div class=hero>
 <div class=big>{pct(blend_hit)}</div>
-<div class=lead>The floor is doing its job &mdash; comfortably <b>above the 85% target</b>.</div>
-<div class=s>Across {len(rounds)} rounds, players have cleared the conservative minimum we set for them {pct(blend_hit)} of the time &mdash; over target in <b>every round so far</b> ({rounds_ok} of {len(rounds)}) and in most games ({games_ok} of {len(all_games)}). That reliability is the core of what the tool does.</div>
+<div class=lead>The floor is holding so far &mdash; <b>in line with its ~85% design</b>.</div>
+<div class=s>Since the page went live, players have cleared the conservative minimum we set for them {pct(blend_hit)} of the time across {len(rounds)} rounds ({rounds_ok} of {len(rounds)} rounds and {games_ok} of {len(all_games)} games over target). Early days &mdash; it&rsquo;ll move as the sample grows &mdash; but the floor doing its job is the core of what the tool does.</div>
 </div>
 
 <div class=cards>

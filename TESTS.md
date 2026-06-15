@@ -41,7 +41,7 @@ little to combine.)
 |---|:--:|---|---|
 | Season-anchored blend (season + L3/L5/L10 + H2H) | ✅ | Beats every single-window alt; re-tuning can't beat it OOS | `backtest.py` |
 | Form-window selection (L3/L5/L10 vs one window) | ✅ | Multi-window doesn't beat the simple blend OOS | `backtest.py` |
-| Disposal floor (vol-scaled Normal @85%) | ✅ | Holds ~85% as designed (R13 live: 87.5%) | `matchup.py`, scorecard |
+| Disposal floor (vol-scaled Normal @85%) | ✅ | Walk-forward calibration (34,785 games): **85.0% across all players** (bang on), but **82.4% on the shown floor>=10 slate** — steady every season (82.2/82.4/82.8/82.4/81.9%). The high-floor picks run ~2.5pts **optimistic** (disposal left tail heavier than Normal: tags, early subs). **Tweak candidate: nudge the floor's z (or fatten the tail) so the shown slate clears ~85%.** This is the model's tuned/expected level — *not* live performance (that's the 2-round scorecard). | `exp_floor_calib.py` |
 | Goal floor (Poisson, decoupled @65%) | ✅ | Calibrated; goals too sparse for 75% | `matchup.py` |
 | Fantasy (built from components + Normal floor) | ✅ | Component build ≈ direct, more debuggable | `matchup.py` |
 | Hit-out floor (Normal) | ✅ | Mildly *conservative* — edges if anything understated | `hitouts_value.py` / calib |
