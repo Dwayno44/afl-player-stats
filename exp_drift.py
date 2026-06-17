@@ -186,8 +186,14 @@ def log_now():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["pilot", "live", "log"])
+    ap.add_argument("--round", type=int, default=14)
+    ap.add_argument("--commit", default="3420d5f",
+                    help="git commit whose page build is the EARLY line (t0) to drift from")
     args = ap.parse_args()
-    {"pilot": pilot, "live": live, "log": log_now}[args.mode]()
+    if args.mode == "live":
+        live(args.round, args.commit)
+    else:
+        {"pilot": pilot, "log": log_now}[args.mode]()
 
 
 if __name__ == "__main__":
