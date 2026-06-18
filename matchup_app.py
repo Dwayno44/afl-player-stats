@@ -496,6 +496,60 @@ def attach_sentiment(games: list[dict], conf: float = M.DEFAULT_CONF) -> int:
     return done
 
 
+def _implied_median(ladder, pstar=0.60):
+    """Market-implied median disposals from an N+ price ladder: where the
+    vig-inflated implied prob (1/price) crosses p* (0.60 fits out-of-sample, see
+    exp_market.py). None if the ladder is too thin."""
+    pts = sorted((int(n), 1.0 / p) for n, p in ladder.items() if p and p > 1.0)
+    if len(pts) < 2:
+        return None
+    xs = [n for n, _ in pts]; ps = [q for _, q in pts]
+    if ps[0] < pstar:
+        return float(xs[0])
+    for i in range(1, len(pts)):
+        if ps[i] < pstar:
+            n0, p0, n1, p1 = xs[i - 1], ps[i - 1], xs[i], ps[i]
+            return float(n0 + (p0 - pstar) * (n1 - n0) / (p0 - p1))
+    return float(xs[-1])
+
+
+def attach_drift(games, year, min_move: float = 0.4):
+    """Mark how far each priced player's market-implied median has moved since the
+    round's opening snapshot (predictions_<year>_R<rnd>.json, whose `d_ladder` is
+    the early line). >0 = late money on; <0 = money off. Only moves >= min_move get
+    an `r['d_drift']`. No-ops where the snapshot is missing or unpriced at open."""
+    base_cache = {}
+    done = 0
+    for g in games:
+        rnd = g.get("round")
+        if rnd not in base_cache:
+            path = f"predictions_{year}_R{rnd}.json"
+            base = {}
+            if os.path.exists(path):
+                for row in json.load(open(path, encoding="utf-8"))["rows"]:
+                    if row.get("d_ladder"):
+                        m = _implied_median(row["d_ladder"])
+                        if m is not None:
+                            base[(row["team"], row["player"])] = m
+            base_cache[rnd] = base
+        base = base_cache[rnd]
+        for side, team in (("home_view", g["home"]), ("away_view", g["away"])):
+            for r in g[side]:
+                if not r.get("od_ladder"):
+                    continue
+                cur = _implied_median(r["od_ladder"])
+                b = base.get((team, r["player"]))
+                # sanity: plausible disposal medians, and a real line move is small.
+                # A >8-disposal "move" is a malformed/mismatched ladder, not money.
+                if cur is None or b is None or not (5 <= cur <= 45) or not (5 <= b <= 45):
+                    continue
+                if min_move <= abs(cur - b) <= 8:
+                    r["d_drift"] = round(cur - b, 1)
+                    done += 1
+    print(f"  drift: {done} players with a line move since the round opened")
+    return done
+
+
 # ── HTML shell (mobile-first; data injected as JSON, rendered in JS) ────────────
 
 _CSS = """
@@ -603,6 +657,10 @@ select{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);
 .headsup .tip{display:block;margin-top:7px;padding-top:7px;border-top:1px solid var(--line);color:var(--mut)}
 .headsup .tip b{color:var(--ink)}
 .headsup a{color:var(--brand);font-weight:700;white-space:nowrap}
+/* line drift since the round's first build: money on (up) / money off (down) */
+.drift{font-size:11px;margin-top:3px;display:flex;gap:5px;align-items:center;font-weight:700}
+.drift.up{color:var(--good)} .drift.dn{color:var(--away)}
+.drift span{margin-left:auto;color:var(--mut);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.04em}
 .na{color:var(--mut)}
 /* Forum/news sentiment strip on a value player: tone chip + availability warning
    + a few linked headlines. Context only — never a probability input. */
@@ -790,6 +848,13 @@ function dispStat(r, o3, dmax){
         DOT + (ev >= 0 ? '+' : '') + Math.round(ev * 100) + '%</span></div>';
     } else if (price === undefined){
       odds += '<div class="sbnone">no Sportsbet line at ' + floor + '+ disposals</div>';
+    }
+    // line drift since the round opened: late money for (up) / away (down)
+    if (r.d_drift){
+      const up = r.d_drift > 0;
+      odds += '<div class="drift ' + (up ? 'up' : 'dn') + '">' + (up ? '\\u25b2' : '\\u25bc') +
+        ' line ' + (up ? '+' : '') + r.d_drift.toFixed(1) + ' since open' +
+        '<span>' + (up ? 'money on' : 'money off') + '</span></div>';
     }
     // a different rung that prices up as clearer value than the floor itself
     if (r.od_best && r.od_best.n !== floor){
@@ -1186,6 +1251,8 @@ def main():
     # --no-sentiment opts out for a faster, network-light build.
     if args.odds and not args.no_sentiment:
         attach_sentiment(games, args.conf)
+    if args.odds:
+        attach_drift(games, args.year)
     to_html(games, skipped, args.out, args.csv, args.conf)
 
 
