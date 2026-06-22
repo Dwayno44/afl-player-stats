@@ -33,9 +33,11 @@ are played.)*
 | Round | Games | Floor-hit (shown) | Value picks | Value ROI |
 |------:|:-----:|:-----------------:|:-----------:|:---------:|
 | R13 | 7 | 87.5% | 52 | -3.1% |
-| **Running total** | **1 round** | **87.5%** | **52** | **-3.1%** |
+| R14 | 6 | 85.0% | 33 | -16.7% |
+| R15 | 7 | 87.8% | 37 | -12.8% |
+| **Running total** | **3 rounds** | **86.9%** | **122** | **-9.7%** |
 
-*Last updated: 2026-06-09 — 1 round complete.*
+*Last updated: 2026-06-22 — 3 rounds complete.*
 
 <!-- SCORECARD:END -->
 
