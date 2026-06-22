@@ -402,10 +402,32 @@ _RG = ("Model output only — not betting advice. Prices were live at build; mar
        "move. Set a limit before you start. Gamble responsibly: 1800 858 858 · "
        "gamblinghelponline.org.au")
 
+# Expectation-setting disclaimer that leads every digest: this is the convenient
+# read of the model, not a get-rich scheme. Counters the historical over-promise
+# and keeps the framing anti-hype (research tool, not a tipping service).
+_DISCLAIMER = (
+    "What this is (and what it isn't): the simple version. I crunch the week's "
+    "disposal and fantasy numbers against the live odds so you don't have to wade "
+    "through the raw data yourself. It is NOT a money-printer — the model just finds "
+    "spots where the bookies look a bit soft, the edges are small, plenty of these "
+    "legs will lose, and no week is a sure thing. Only ever bet what you're happy to "
+    "lose.")
+
+_DISCLAIMER_HTML = (
+    '<div style="font-size:12px;color:#5b6f96;background:#f4f6fb;border:1px solid '
+    '#e2e8f4;border-radius:6px;padding:10px 12px;margin:6px 0 16px">'
+    '<b style="color:#0c2f6b">What this is (and what it isn\'t).</b> The simple version '
+    '&mdash; I crunch the week\'s disposal &amp; fantasy numbers against the live odds so '
+    'you don\'t have to wade through the raw data yourself. It\'s <b>not</b> a money-printer: '
+    'the model just finds spots where the bookies look a bit soft &mdash; the edges are '
+    'small, plenty of these legs will lose, and no week is a sure thing. Only ever bet what '
+    'you\'re happy to lose.</div>')
+
 
 def render_slate_text(games, gen, include_monday=False) -> str:
     up = _upcoming(games, include_monday)
     out = [f"PuntersMate — round slate (page generated {gen})", "=" * 60]
+    out.append("\n" + _DISCLAIMER)
     out.append("\nTHE GAME PLAYS  —  one same-game multi per match")
     for g in up:
         gp = game_play(g)
@@ -495,7 +517,7 @@ def render_slate_html(games, gen, include_monday=False) -> str:
             f'<h2 style="margin:0 0 2px">PuntersMate — round slate</h2>'
             f'<div style="color:{C["mut"]};font-size:12px;margin-bottom:6px">page generated '
             f'{gen} · pick the slate that matches your appetite · model edges ignore '
-            f'the bookie margin</div>{"".join(blocks)}'
+            f'the bookie margin</div>{_DISCLAIMER_HTML}{"".join(blocks)}'
             f'<div style="color:{C["mut"]};font-size:11px;margin-top:18px">{_RG}</div></div>')
 
 
