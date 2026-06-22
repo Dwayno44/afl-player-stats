@@ -101,18 +101,18 @@ def build_html(rounds):
     rrows = "".join(
         f"<tr><td class='l'>R{r['round']}{'' if r['complete'] else ' <span class=ip>(in&nbsp;progress)</span>'}</td>"
         f"<td>{r['games_concluded']}</td><td class='{hcls(r['shown_hit'])} big'>{pct(r['shown_hit'])}</td>"
-        f"<td class=q>{r['value_n']}</td><td class='q {cls(r['value_roi'],1)}'>{roi(r['value_roi'])}</td></tr>"
+        f"<td class=q>{r['value_n']}</td></tr>"
         for r in rounds)
     gblocks = ""
     for r in rounds:
         grows = "".join(
             f"<tr><td class='l'>{gm['game']}</td><td class='{hcls(gm['shown_hit'])} big'>{pct(gm['shown_hit'])}</td>"
-            f"<td class=q>{gm['value_n']}</td><td class='q {cls(gm['value_roi'],1)}'>{roi(gm['value_roi'])}</td></tr>"
+            f"<td class=q>{gm['value_n']}</td></tr>"
             for gm in r["games"])
         gblocks += (f"<details class='gd'><summary>Round {r['round']} &middot; "
                     f"by game ({r['games_concluded']} games)</summary>"
                     f"<table class='t'><tr><th class='l'>Game</th><th>Floor&#8209;hit</th>"
-                    f"<th>Value picks</th><th>Value ROI</th></tr>{grows}</table></details>")
+                    f"<th>Value picks</th></tr>{grows}</table></details>")
 
     updated = datetime.now(timezone.utc).strftime("%d %b %Y")
     return f"""<!doctype html><html lang=en><head><meta charset=utf-8>
@@ -174,9 +174,9 @@ table.t{{width:100%;border-collapse:collapse;font-size:13.5px}}
 </div>
 
 <h2>By round &mdash; the floor holds</h2>
-<table class=t><tr><th class=l>Round</th><th>Games</th><th>Floor&#8209;hit</th><th>Value picks</th><th>Value ROI</th></tr>
+<table class=t><tr><th class=l>Round</th><th>Games</th><th>Floor&#8209;hit</th><th>Value picks</th></tr>
 {rrows}
-<tfoot><tr><td class=l>All</td><td>&middot;</td><td class='{hcls(blend_hit)} big'>{pct(blend_hit)}</td><td class=q>{vn}</td><td class='q {cls(blend_roi,1)}'>{roi(blend_roi)}</td></tr></tfoot>
+<tfoot><tr><td class=l>All</td><td>&middot;</td><td class='{hcls(blend_hit)} big'>{pct(blend_hit)}</td><td class=q>{vn}</td></tr></tfoot>
 </table>
 
 <h2>Round&#8209;by&#8209;round, game by game</h2>
@@ -184,7 +184,7 @@ table.t{{width:100%;border-collapse:collapse;font-size:13.5px}}
 
 <h2>A note on the value highlights</h2>
 <div class=sec>
-<p>Separate from the floor: the <b>green/amber tints</b> flag where our model thinks the bookie&rsquo;s price is generous. Be clear-eyed about these &mdash; backing every one returns <b>{roi(blend_roi)}</b> so far, so they&rsquo;re a research <i>input</i>, not a system for beating the bookies. And a useful nuance: a <b>bigger</b> model edge usually means the market knows late info we don&rsquo;t, so the <b>green</b> picks have actually cleared their floor <i>less</i> often than amber. If you use the tints, favour <b>amber</b> (or amber + un&#8209;highlighted).</p>
+<p>Separate from the floor: the <b>green/amber tints</b> flag where our model thinks the bookie&rsquo;s price is generous. Be clear-eyed about them &mdash; they&rsquo;re a research <i>input</i>, not a system for beating the bookies. A useful nuance: a <b>bigger</b> model edge usually means the market knows late info we don&rsquo;t, so the <b>green</b> picks have actually cleared their floor <i>less</i> often than amber. If you use the tints, favour <b>amber</b> (or amber + un&#8209;highlighted).</p>
 <div class=ga>
 <div class="b g"><div class="v">{pct(ghit)}</div><div class=k>GREEN (clear value) &middot; {gn} picks</div></div>
 <div class="b a"><div class="v">{pct(ahit)}</div><div class=k>AMBER (borderline) &middot; {an} picks</div></div>
