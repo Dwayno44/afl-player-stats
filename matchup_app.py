@@ -718,6 +718,16 @@ table.be td.be-ok{color:var(--good)}
   .games{grid-template-columns:1fr 1fr;align-items:start}
 }
 @media(max-width:340px){.stats{grid-template-columns:1fr}}
+/* Simple view: floors only, ranked by disposal floor, no supporting stats */
+.vtoggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);cursor:pointer;user-select:none;white-space:nowrap}
+.vtoggle input{accent-color:var(--disp);width:15px;height:15px;cursor:pointer;margin:0}
+.card.simple .simplehead{display:grid;grid-template-columns:1fr 50px 50px;gap:10px;padding:6px 2px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);border-bottom:1px solid var(--line)}
+.card.simple .simplehead span:not(:first-child){text-align:right}
+.srow{display:grid;grid-template-columns:1fr 50px 50px;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;align-items:baseline}
+.srow:last-child{border-bottom:none}
+.sname{font-weight:600;color:var(--ink);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.snum{text-align:right;font-weight:700;color:var(--ink);font-size:15px}
+.srow .snum:last-child{color:var(--mut);font-weight:600;font-size:14px}
 """
 
 _JS = """
@@ -729,6 +739,8 @@ const FLOOR_MIN = 10;          // only show players whose disposal floor clears 
 const sel = document.getElementById('game');
 const out = document.getElementById('out');
 const meta = document.getElementById('meta');
+const simpleChk = document.getElementById('simple');
+let simpleMode = false;
 const curConf = Math.round(DATA.conf * 100);   // disposal-floor confidence (fixed)
 const ZCONF = Z[curConf] || Z[85];
 const VAL_CLEAR = 0.05;        // model edge over the bookie price that counts as "clear" value
@@ -960,13 +972,36 @@ function teamCard(side, team, opp, view, named){
   });
   return '<div class="card ' + side + '">' + head + rows + '</div>';
 }
+// Simple view: just the disposal + fantasy floors, players ranked by disposal
+// floor (largest first), no supporting stats or odds. Same FLOOR_MIN universe as
+// the full view, so the toggle shows the same players in a stripped-back form.
+function teamCardSimple(side, team, opp, view, named){
+  const tag = named
+    ? '<span class="lineup named">named team</span>'
+    : '<span class="lineup pending">team not yet named &middot; all players</span>';
+  const head = '<h2>' + team + ' <small>vs ' + opp + '</small>' + tag + '</h2>';
+  const shown = view
+    .filter(r => { const f = dispFloor(r); return f !== null && f >= FLOOR_MIN; })
+    .sort((a, b) => dispFloor(b) - dispFloor(a));
+  if (!shown.length)
+    return '<div class="card ' + side + ' simple">' + head +
+      '<div class="empty">No players clear a ' + FLOOR_MIN + '-disposal floor at ' + curConf + '% confidence.</div></div>';
+  let rows = '<div class="simplehead"><span>Player</span><span>Disp</span><span>Fan</span></div>';
+  shown.forEach(r => {
+    rows += '<div class="srow"><span class="sname">' + r.player + '</span>'+
+      '<span class="snum">' + f0(dispFloor(r)) + '</span>'+
+      '<span class="snum">' + f0(fanFloor(r)) + '</span></div>';
+  });
+  return '<div class="card ' + side + ' simple">' + head + rows + '</div>';
+}
 function render(i){
   curGame = i;
   const g = DATA.games[i];
   meta.textContent = 'Round ' + g.round + DOT + fmtDate(g) + DOT + (g.venue || '');
+  const card = simpleMode ? teamCardSimple : teamCard;
   out.innerHTML =
-    teamCard('home', g.home, g.away, g.home_view, g.home_named) +
-    teamCard('away', g.away, g.home, g.away_view, g.away_named);
+    card('home', g.home, g.away, g.home_view, g.home_named) +
+    card('away', g.away, g.home, g.away_view, g.away_named);
 }
 
 // Betting strategy + break-even odds, both driven by the chosen confidence.
@@ -992,6 +1027,7 @@ function renderStrategy(conf){
 }
 
 sel.addEventListener('change', e => render(+e.target.value));
+simpleChk.addEventListener('change', e => { simpleMode = e.target.checked; render(curGame); });
 renderStrategy(curConf);
 // Default to the next game that hasn't started yet (fall back to the first).
 const now = new Date();
@@ -1178,6 +1214,7 @@ def to_html(games, skipped, path, csv, conf=M.DEFAULT_CONF, goal_conf=M.GOAL_CON
 <body><div class="wrap">
 <header class="top"><div class="brand">{_HEADER_MARK}<h1 class="wordmark">Punters<span>Mate</span></h1></div>
 <select id="game" aria-label="Select match"></select>
+<label class="vtoggle"><input type="checkbox" id="simple">Simple view</label>
 <p class="meta" id="meta"></p></header>
 <div class="headsup">
 <span class="h">&#9888; Don&rsquo;t bet the <span class="g">greens</span> only</span>
