@@ -721,13 +721,20 @@ table.be td.be-ok{color:var(--good)}
 /* Simple view: floors only, ranked by disposal floor, no supporting stats */
 .vtoggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);cursor:pointer;user-select:none;white-space:nowrap}
 .vtoggle input{accent-color:var(--disp);width:15px;height:15px;cursor:pointer;margin:0}
-.card.simple .simplehead{display:grid;grid-template-columns:1fr 50px 50px;gap:10px;padding:6px 2px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);border-bottom:1px solid var(--line)}
-.card.simple .simplehead span:not(:first-child){text-align:right}
-.srow{display:grid;grid-template-columns:1fr 50px 50px;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;align-items:baseline}
+/* In simple view, strip the page back to just the cards: no top pre-amble, no
+   strategy / method-and-caveats sections at the foot. */
+body.simple-mode .headsup,body.simple-mode .strategy{display:none}
+.card.simple .simplehead{display:grid;grid-template-columns:1fr 56px 56px;gap:8px;padding:9px 14px 7px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);border-bottom:1px solid var(--line);background:var(--inset)}
+.card.simple .simplehead span:not(:first-child){text-align:center}
+.card.simple .simplehead .d{color:var(--disp)}
+.card.simple .simplehead .f{color:var(--fan)}
+.srow{display:grid;grid-template-columns:1fr 56px 56px;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line);align-items:center;transition:background .12s}
 .srow:last-child{border-bottom:none}
-.sname{font-weight:600;color:var(--ink);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.snum{text-align:right;font-weight:700;color:var(--ink);font-size:15px}
-.srow .snum:last-child{color:var(--mut);font-weight:600;font-size:14px}
+.srow:hover{background:var(--inset)}
+.sname{font-weight:600;color:var(--ink);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.snum{text-align:center;font-variant-numeric:tabular-nums;font-weight:800;font-size:15px;padding:3px 0;border-radius:8px}
+.snum.d{color:var(--disp);background:rgba(26,99,220,.09)}
+.snum.f{color:var(--fan);background:rgba(122,63,242,.09)}
 """
 
 _JS = """
@@ -986,11 +993,11 @@ function teamCardSimple(side, team, opp, view, named){
   if (!shown.length)
     return '<div class="card ' + side + ' simple">' + head +
       '<div class="empty">No players clear a ' + FLOOR_MIN + '-disposal floor at ' + curConf + '% confidence.</div></div>';
-  let rows = '<div class="simplehead"><span>Player</span><span>Disp</span><span>Fan</span></div>';
+  let rows = '<div class="simplehead"><span>Player</span><span class="d">Disp</span><span class="f">Fan</span></div>';
   shown.forEach(r => {
     rows += '<div class="srow"><span class="sname">' + r.player + '</span>'+
-      '<span class="snum">' + f0(dispFloor(r)) + '</span>'+
-      '<span class="snum">' + f0(fanFloor(r)) + '</span></div>';
+      '<span class="snum d">' + f0(dispFloor(r)) + '</span>'+
+      '<span class="snum f">' + f0(fanFloor(r)) + '</span></div>';
   });
   return '<div class="card ' + side + ' simple">' + head + rows + '</div>';
 }
@@ -1027,7 +1034,11 @@ function renderStrategy(conf){
 }
 
 sel.addEventListener('change', e => render(+e.target.value));
-simpleChk.addEventListener('change', e => { simpleMode = e.target.checked; render(curGame); });
+simpleChk.addEventListener('change', e => {
+  simpleMode = e.target.checked;
+  document.body.classList.toggle('simple-mode', simpleMode);
+  render(curGame);
+});
 renderStrategy(curConf);
 // Default to the next game that hasn't started yet (fall back to the first).
 const now = new Date();
