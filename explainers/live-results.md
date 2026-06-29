@@ -33,9 +33,10 @@ are played.)*
 | R13 | 7 | 87.5% | 52 |
 | R14 | 6 | 85.0% | 33 |
 | R15 | 7 | 87.8% | 37 |
-| **Running total** | **3 rounds** | **86.9%** | **122** |
+| R16 | 6 | 81.6% | 34 |
+| **Running total** | **4 rounds** | **85.6%** | **156** |
 
-*Last updated: 2026-06-22 — 3 rounds complete.*
+*Last updated: 2026-06-29 — 4 rounds complete.*
 
 <!-- SCORECARD:END -->
 
