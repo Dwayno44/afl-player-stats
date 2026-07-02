@@ -75,6 +75,17 @@ Everything below is something we *added* to that core, tested, and mostly remove
   thin.
 - **Recent disposals-against trend.** The popular "this defence has been leaking
   lately" angle. It backtested at essentially **zero**.
+- **Position-type matchups ("DvP").** The tipster-video favourite: how do inside
+  mids / outside mids / defenders fare against a particular opponent? We tested it
+  at four levels of granularity — whole team, line (back/mid/fwd), box-score role,
+  and finally position archetypes split properly by centre-bounce attendance
+  (Neale-style inside mids vs Whitfield-style outside runners). All four are noise:
+  no team's concession to any position type persists from one round to the next
+  (autocorrelation ≈ 0), so last month's "leaks to outside mids" tells you nothing
+  about next week. The pattern is real *backwards* every week, which is why the
+  videos are convincing — it just doesn't carry *forwards*. One nugget: how much
+  uncontested ball a team concedes IS a mildly persistent trait (pressure is real),
+  but it's too weak to produce a usable pick tilt.
 - **Pressure and contest stats.** Pulled from the official feed (pressure acts,
   contested-possession rate, hit-out-to-advantage) and explored as inputs — no
   reliable signal beyond what form already carries.
