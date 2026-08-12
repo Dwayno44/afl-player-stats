@@ -42,7 +42,11 @@ def round_results(year, rnd):
                       "value_roi": roi["roi"] if roi else None})
     shown, value = SC._row(g[g.shown]), SC._roi(g)
     green, amber = SC._row(g[g.tint == "clear"]), SC._row(g[g.tint == "border"])
-    return {"round": rnd, "games": games, "reconstructed": bool(snap.get("reconstructed")),
+    # "floors-only": no live pre-game odds were captured for the round, so there are
+    # no value picks — whether because it was reconstructed (app offline) or the
+    # snapshot was taken before markets posted. Either way the floor is genuine.
+    floors_only = not any(row.get("tint") or row.get("d_ladder") for row in snap["rows"])
+    return {"round": rnd, "games": games, "floors_only": floors_only,
             "games_concluded": len(conc), "games_total": len(page_games),
             "complete": len(conc) == len(page_games),
             "shown_hit": shown["hit"] if shown else None, "shown_n": shown["n"] if shown else 0,
@@ -98,18 +102,18 @@ def build_html(rounds):
     cls = lambda v, good: ("pos" if (v or 0) >= 0 else "neg") if good else ""
     hcls = lambda h: "pos" if ot(h) else ""   # floor-hit at/above target = green
     # per-round rows (floor-hit is the star; value columns muted)
-    vcell = lambda r: "&mdash;&dagger;" if r.get("reconstructed") else r["value_n"]
+    vcell = lambda r: "&mdash;&dagger;" if r.get("floors_only") else r["value_n"]
     rrows = "".join(
         f"<tr><td class='l'>R{r['round']}{'' if r['complete'] else ' <span class=ip>(in&nbsp;progress)</span>'}</td>"
         f"<td>{r['games_concluded']}</td><td class='{hcls(r['shown_hit'])} big'>{pct(r['shown_hit'])}</td>"
         f"<td class=q>{vcell(r)}</td></tr>"
         for r in rounds)
-    recon_any = any(r.get("reconstructed") for r in rounds)
+    recon_any = any(r.get("floors_only") for r in rounds)
     gblocks = ""
     for r in rounds:
         grows = "".join(
             f"<tr><td class='l'>{gm['game']}</td><td class='{hcls(gm['shown_hit'])} big'>{pct(gm['shown_hit'])}</td>"
-            f"<td class=q>{'&mdash;' if r.get('reconstructed') else gm['value_n']}</td></tr>"
+            f"<td class=q>{'&mdash;' if r.get('floors_only') else gm['value_n']}</td></tr>"
             for gm in r["games"])
         gblocks += (f"<details class='gd'><summary>Round {r['round']} &middot; "
                     f"by game ({r['games_concluded']} games)</summary>"
@@ -180,7 +184,7 @@ table.t{{width:100%;border-collapse:collapse;font-size:13.5px}}
 {rrows}
 <tfoot><tr><td class=l>All</td><td>&middot;</td><td class='{hcls(blend_hit)} big'>{pct(blend_hit)}</td><td class=q>{vn}</td></tr></tfoot>
 </table>
-{"<p class=note>&dagger; <b>Floor&#8209;only reconstruction.</b> The app was offline those weeks, so the live pre&#8209;game odds weren&rsquo;t captured &mdash; there are no value picks for those rounds. The floor figures are genuine: they&rsquo;re fixed by each player&rsquo;s prior form before the round, so they can be rebuilt exactly.</p>" if recon_any else ""}
+{"<p class=note>&dagger; <b>Floor&#8209;only round.</b> No live pre&#8209;game odds were captured, so there are no value picks &mdash; but the floor figures are genuine: they&rsquo;re fixed by each player&rsquo;s prior form before the round, independent of the market, so they can be rebuilt exactly.</p>" if recon_any else ""}
 
 <h2>Round&#8209;by&#8209;round, game by game</h2>
 {gblocks}

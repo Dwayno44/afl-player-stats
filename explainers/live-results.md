@@ -38,11 +38,13 @@ are played.)*
 | R18 | 9 | 83.1% | —† |
 | R19 | 9 | 84.2% | —† |
 | R20 | 9 | 89.3% | —† |
-| **Running total** | **8 rounds** | **85.2%** | **200** |
+| R21 | 9 | 81.4% | —† |
+| R22 | 9 | 81.2% | —† |
+| **Running total** | **10 rounds** | **84.4%** | **200** |
 
-*Last updated: 2026-07-27 — 8 rounds complete.*
+*Last updated: 2026-08-12 — 10 rounds complete.*
 
-*† Floor-only reconstruction — the app was offline that week so the pre-game odds weren't captured. The floor numbers are genuine (they're deterministic from prior form); there are simply no value picks for those rounds.*
+*† Floor-only round — no live pre-game odds were captured, so there are no value picks. The floor numbers are genuine (they're deterministic from prior form, independent of the market).*
 
 <!-- SCORECARD:END -->
 
