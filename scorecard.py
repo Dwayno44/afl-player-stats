@@ -33,10 +33,16 @@ LOG = "scorecard_log.csv"
 
 
 # ── prediction snapshot (from the live page) ─────────────────────────────────────
+import matchup as M   # for the shared heavy-tail floor (keeps grading == display)
+
+
 def disp_floor(proj, sigma):
     if sigma in (None, "") or (isinstance(sigma, float) and np.isnan(sigma)):
         return max(0, int(np.floor(proj * 0.85)))
-    return max(0, int(np.floor(proj - ZCONF * sigma)))
+    # same heavy-tail disposal floor the page shows (matchup.HEAVY_TAIL) so a snapshot
+    # grades against exactly the floor the user saw.
+    z = M.heavy_z(proj, 0.85, M.HEAVY_TAIL)
+    return max(0, int(np.floor(proj - z * sigma)))
 
 
 def tint(proj, sigma, ladder, floor):

@@ -33,6 +33,14 @@ W_WITHOUT_H2H = {"L3": 0.15, "L5": 0.05, "L10": 0.25, "season": 0.55}
 FORM_GAMES    = 5      # window shown as "L5" in the views (the projection uses all of FORM_WINDOWS)
 FLOOR_GAMES   = 15     # recent-game sample used to estimate confidence floors
 DEFAULT_CONF  = 0.85   # target confidence for the disposal floor (85%)
+HEAVY_TAIL    = 0.30   # DISPOSALS ONLY: extra floor haircut for high-usage players.
+                       # The disposal left tail is heavier than Normal for high-proj
+                       # mids (tags, early subs, role cuts), so a flat z(0.85) left the
+                       # shown slate (floor>=10) ~2.5pts optimistic (~82.5% vs 85%).
+                       # This adds heavy*max(0,proj-15)/10 to z, only above proj 15 —
+                       # brings the shown slate to ~85% (per-season 84.5-85.2, walk-
+                       # forward 2022-26) while keeping 99% of shown picks and barely
+                       # moving the already-calibrated all-players set. See exp_floor_z.py.
 GOAL_CONF     = 0.65   # goals are sparse; a 75% Poisson floor is too strict, so
                        # the goal floor uses a lower confidence (a proj of ~1.05
                        # goals clears 1+ here, vs ~1.39 at 75%)
@@ -92,21 +100,34 @@ def recent_for_team(df: pd.DataFrame, team: str, player: str,
     return g.tail(max(n, min_n))
 
 
-def disposal_floor(proj: float, series: pd.Series, conf: float = DEFAULT_CONF) -> float:
+def heavy_z(proj, conf: float = DEFAULT_CONF, heavy: float = 0.0) -> float:
+    """One-sided z for a floor. heavy=0 -> plain z(conf). heavy>0 fattens the left
+    tail for high-projection players by adding heavy*max(0,proj-15)/10 (disposals
+    scale) — leaves proj<=15 untouched. Shared by the page (display) and the
+    scorecard (grading) so both compute the identical floor. See HEAVY_TAIL."""
+    z = NormalDist().inv_cdf(conf)
+    if heavy and proj is not None and not pd.isna(proj) and proj > 15:
+        z += heavy * (proj - 15.0) / 10.0
+    return z
+
+
+def disposal_floor(proj: float, series: pd.Series, conf: float = DEFAULT_CONF,
+                   heavy: float = 0.0) -> float:
     """Projected disposals minus a volatility-scaled margin of safety.
 
     margin = z(conf) * sigma, where sigma is the std of the player's recent games
     and z(conf) is the one-sided normal quantile (conf=0.75 -> z~0.67). Under a
     normal approximation the player clears `proj - margin` in ~conf of games.
-    Rounded down; never below 0. With <3 games to gauge spread, falls back to a
-    flat 15% haircut on the projection."""
+    `heavy` fattens the left tail for high-usage players (see heavy_z / HEAVY_TAIL);
+    pass it for disposals, leave 0 for fantasy (a different scale). Rounded down;
+    never below 0. With <3 games to gauge spread, falls back to a flat 15% haircut."""
     if proj is None or pd.isna(proj):
         return float("nan")
     s = series.dropna()
     if len(s) < 3:
         return float(max(0.0, np.floor(proj * 0.85)))
     sigma = float(s.std(ddof=1))
-    margin = NormalDist().inv_cdf(conf) * sigma
+    margin = heavy_z(proj, conf, heavy) * sigma
     return float(max(0.0, np.floor(proj - margin)))
 
 
@@ -196,7 +217,7 @@ def team_view(df: pd.DataFrame, team: str, opponent: str, n: int | None = None,
         # symmetric stat, so proj - z*sigma is calibrated to within ~1% (backtest).
         d_recent = recent["disposals"].dropna()
         d_sigma = float(d_recent.std(ddof=1)) if len(d_recent) >= 3 else None
-        d_floor = disposal_floor(d_proj, recent["disposals"], conf)
+        d_floor = disposal_floor(d_proj, recent["disposals"], conf, heavy=HEAVY_TAIL)
         f_recent = recent["fantasy"].dropna()
         f_sigma = float(f_recent.std(ddof=1)) if len(f_recent) >= 3 else None
         f_floor = disposal_floor(f_proj, recent["fantasy"], conf)
