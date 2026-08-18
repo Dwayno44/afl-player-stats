@@ -157,6 +157,10 @@ def grade(year, rnd, append=True):
     page_games = list(dict.fromkeys(pred.game))
     conc = [x for x in page_games if x in played]
 
+    if not conc:
+        print(f"  R{rnd}: no games concluded yet — nothing to grade")
+        return
+
     print(f"\n{'='*72}\n  ROUND {rnd} SCORECARD — page predictions vs AFL API actuals")
     print(f"  {len(conc)}/{len(page_games)} games concluded   "
           f"(snapshot built {snap.get('built')})\n{'='*72}")

@@ -1,0 +1,65 @@
+name: Grade safety net
+
+# Keeps the public track record complete and current WITHOUT the local AU machine.
+#
+# For every concluded round with no snapshot, it backfills the floors (deterministic,
+# leak-free) so the round can be graded; then it grades all pending rounds and
+# regenerates the track-record pages. This is the backstop for the gap that hit
+# R18/19/21/22 — the weekly snapshot/grade only runs while the local app is open, so
+# whenever it isn't, rounds silently fell out of the record.
+#
+# AFL API only (keyless token, works from any IP). It does NOT touch Sportsbet or
+# docs/index.html: odds are AU-geo-restricted, so value picks still come from the
+# local build. A round this job backfills is floors-only — the floor numbers are
+# genuine; there just are no value picks for it. It never overwrites an existing
+# (odds-bearing) snapshot.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Wednesday 02:00 UTC — a few hours after the Tuesday 20:00 UTC CSV refresh,
+    # so the weekend's round is both concluded and present in the stats CSV.
+    - cron: "0 2 * * 3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: grade-safety-net
+  cancel-in-progress: false
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Backfill missing snapshots, grade, rebuild pages
+        run: python3 ci_grade.py
+
+      - name: Commit & push record if changed
+        # The track record + any backfilled floor snapshots. NEVER docs/index.html
+        # (that's the odds page, built locally on an AU IP — see publish-matchups.yml).
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scorecard_log.csv results_data.json explainers/live-results.md docs/results.html predictions_2026_R*.json
+          if git diff --cached --quiet; then
+            echo "No track-record changes to commit."
+          else
+            git commit -m "Grade safety net: update track record ($(date -u +%Y-%m-%d))"
+            git push
+          fi

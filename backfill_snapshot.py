@@ -68,21 +68,17 @@ def build_rows(df_pre, home, away):
     return rows
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--round", type=int, required=True)
-    ap.add_argument("--year", type=int, default=2026)
-    ap.add_argument("--csv", default="games_2022_2026.csv")
-    a = ap.parse_args()
-
-    df = M.load(a.csv)
-    df_pre = df[(df.season < a.year) | ((df.season == a.year) & (df["round"] < a.round))]
+def run(rnd, year=2026, csv="games_2022_2026.csv"):
+    """Reconstruct and write a floors-only snapshot for one round. Returns its path.
+    Importable so the CI safety net (ci_grade.py) can backfill missed rounds."""
+    df = M.load(csv)
+    df_pre = df[(df.season < year) | ((df.season == year) & (df["round"] < rnd))]
     if df_pre.empty:
-        raise SystemExit(f"no games before {a.year} R{a.round} in {a.csv}")
+        raise SystemExit(f"no games before {year} R{rnd} in {csv}")
 
-    fixtures = fixture_csv_names(a.year, a.round)
+    fixtures = fixture_csv_names(year, rnd)
     if not fixtures:
-        raise SystemExit(f"no CONCLUDED games for {a.year} R{a.round} in the AFL API")
+        raise SystemExit(f"no CONCLUDED games for {year} R{rnd} in the AFL API")
 
     rows = []
     for home, away in fixtures:
@@ -90,14 +86,25 @@ def main():
 
     out = {
         "built": f"RECONSTRUCTED floors-only backfill ({datetime.now(timezone.utc).date()})",
-        "year": a.year, "round": a.round, "reconstructed": True, "rows": rows,
+        "year": year, "round": rnd, "reconstructed": True, "rows": rows,
     }
-    path = S.SNAP.format(year=a.year, rnd=a.round)
+    path = S.SNAP.format(year=year, rnd=rnd)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(out, fh)
     shown = sum(r["shown"] for r in rows)
     print(f"backfill -> {path}: {len(rows)} player predictions ({shown} shown >={S.FLOOR_MIN}), "
-          f"{len(fixtures)} games, floors-only (no value tints). Now: scorecard.py grade --round {a.round}")
+          f"{len(fixtures)} games, floors-only (no value tints).")
+    return path
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--round", type=int, required=True)
+    ap.add_argument("--year", type=int, default=2026)
+    ap.add_argument("--csv", default="games_2022_2026.csv")
+    a = ap.parse_args()
+    run(a.round, a.year, a.csv)
+    print(f"Now: scorecard.py grade --round {a.round}")
 
 
 if __name__ == "__main__":
