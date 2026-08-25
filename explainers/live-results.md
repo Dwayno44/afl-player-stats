@@ -41,9 +41,10 @@ are played.)*
 | R21 | 9 | 81.4% | —† |
 | R22 | 9 | 81.2% | —† |
 | R23 | 9 | 87.4% | 21 |
-| **Running total** | **11 rounds** | **84.7%** | **221** |
+| R24 | 9 | 89.8% | 15 |
+| **Running total** | **12 rounds** | **85.1%** | **236** |
 
-*Last updated: 2026-08-20 — 11 rounds complete.*
+*Last updated: 2026-08-25 — 12 rounds complete.*
 
 *† Floor-only round — no live pre-game odds were captured, so there are no value picks. The floor numbers are genuine (they're deterministic from prior form, independent of the market).*
 
