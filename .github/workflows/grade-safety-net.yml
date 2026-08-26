@@ -53,13 +53,16 @@ jobs:
       - name: Commit & push record if changed
         # The track record + any backfilled floor snapshots. NEVER docs/index.html
         # (that's the odds page, built locally on an AU IP — see publish-matchups.yml).
+        # results_data.json is a gitignored regenerable cache — do NOT add it (an
+        # explicit `git add` of an ignored path errors and aborts the whole add).
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scorecard_log.csv results_data.json explainers/live-results.md docs/results.html predictions_2026_R*.json
+          git add scorecard_log.csv explainers/live-results.md docs/results.html predictions_2026_R*.json
           if git diff --cached --quiet; then
             echo "No track-record changes to commit."
           else
             git commit -m "Grade safety net: update track record ($(date -u +%Y-%m-%d))"
+            git pull --rebase origin main
             git push
           fi
